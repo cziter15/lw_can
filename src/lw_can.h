@@ -33,17 +33,107 @@
 #include "driver/gpio.h"
 #include "lw_can_defs.h"
 
-extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize);
-extern bool lw_can_uninstall();
+/*
+	This function is used to install the CAN bus driver.
+
+	@param rxPin CAN RX pin.
+	@param txPin CAN TX pin.
+	@param speedKbps CAN speed in kbps.
+	@param rxQueueSize CAN RX queue size.
+	@param txQueueSize CAN TX queue size.
+
+	@return true on success, false on failure.
+*/
+extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30);
+
+/*
+	This function is used to set CAN bus filter for incomming message.
+	Must be called after install and before start.
+
+	@param msgFilter CAN message filter.
+
+	@return true on success, false on failure.
+*/
 extern bool lw_can_set_filter(uint32_t msgFilter);
+
+/*
+	This function is used to uninstall the CAN bus driver.
+
+	@return true on success, false on failure.
+*/
+extern bool lw_can_uninstall(); 
+
+
+/*
+	This function is used to start the CAN bus driver.
+
+	@return true on success, false on failure.
+*/
 extern bool lw_can_start();
+
+/*
+	This function is used to stop the CAN bus driver.
+
+	@return true on success, false on failure.
+*/
 extern bool lw_can_stop();
+
+/*
+	This function transmits CAN frame.
+
+	@param frame Frame reference
+
+	@return true if frame has been queued for TX, false otherwise.
+*/
 extern bool lw_can_transmit(const CAN_frame_t& frame);
+
+/*
+	This function reads CAN frame from queue.
+
+	@param frame Frame reference
+
+	@return true if frame has been read, false otherwise.
+*/
 extern bool lw_can_read_next_frame(CAN_frame_t& outFrame);
 
+/*
+	This function return the count of watchdog hits (automatic bus reset).
+
+	@return Count of watchdog hits.
+*/
 extern uint32_t lw_can_get_wd_hits();
+
+/*
+	This function return the count of arbitration loss.
+
+	@return Count of arbitration loss.
+*/
 extern uint32_t lw_can_get_arb_lost_cnt();
+
+/*
+	This function return the count of data overrun.
+
+	@return Count of data overrun.
+*/
 extern uint32_t lw_can_get_data_overrun_cnt();
+
+/*
+	This function return the count of wake ups.
+
+	@return Count of wake ups.
+*/
 extern uint32_t lw_can_get_wake_up_cnt();
+
+/*
+	This function return the count of error passive ocurrences.
+
+	@return Count of error passive ocurrences.
+*/
 extern uint32_t lw_can_get_err_passive_cnt();
+
+/*
+	This function return the count of bus error ocurrences.
+
+	@return Count of bus error ocurrences.
+*/
 extern uint32_t lw_can_get_bus_error_cnt();

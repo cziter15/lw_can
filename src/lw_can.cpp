@@ -192,8 +192,11 @@ bool impl_lw_can_start()
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 
+		// disable all interrupt sources
+		MODULE_CAN->IER.U = 0; 
+
 		// configure TX pin
-		gpio_set_level(pDriverObj->txPin, 1);
+		gpio_set_level(pDriverObj->txPin, 0);
 		gpio_set_direction(pDriverObj->txPin, GPIO_MODE_OUTPUT);
 		gpio_matrix_out(pDriverObj->txPin, CAN_TX_IDX, 0, 0);
 		gpio_pad_select_gpio(pDriverObj->txPin);
