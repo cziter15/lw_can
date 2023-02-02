@@ -1,3 +1,33 @@
+/**
+ * @section License
+ *
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2017, Thomas Barth, barth-dev.de
+ * Copyright (c) 2023, Krzysztof Strehlau, github.com/cziter15
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ */
+
 #include "lw_can.h"
 #include "math.h"
 #include <stdint.h>
@@ -215,8 +245,8 @@ bool impl_lw_can_start()
 		* buses (SAE class C)*/
 		MODULE_CAN->BTR1.B.SAM = 0x1;
 
-		// enable all interrupts
-		MODULE_CAN->IER.U = 0xff;
+		//enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
+		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 		// Set acceptance filter	
 		MODULE_CAN->MOD.B.AFM = pDriverObj->filter.FM;	
@@ -377,19 +407,6 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 	BaseType_t higherPriorityTaskWoken = pdFALSE;
 	interrupt = MODULE_CAN->IR.U;
 
-	// Handle RX frame available interrupt
-	if ((interrupt & __CAN_IRQ_RX) != 0)
-	{
-		for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
-		{
-			impl_lw_read_frame_phy();
-		}
-	}
-
-	// Handle TX complete interrupt
-	if ((interrupt & __CAN_IRQ_TX) != 0)
-		xSemaphoreGiveFromISR(pDriverObj->txComplete, &higherPriorityTaskWoken);
-
 	// Handle counters.
 	if ((interrupt & __CAN_IRQ_ARB_LOST) != 0)
 		++pDriverObj->arb_lost_cnt;
@@ -405,6 +422,19 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 
 	if ((interrupt & __CAN_IRQ_BUS_ERR) != 0)
 		++pDriverObj->bus_error_cnt;
+
+	// Handle RX frame available interrupt
+	if ((interrupt & __CAN_IRQ_RX) != 0)
+	{
+		for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
+		{
+			impl_lw_read_frame_phy();
+		}
+	}
+
+	// Handle TX complete interrupt
+	if ((interrupt & __CAN_IRQ_TX) != 0)
+		xSemaphoreGiveFromISR(pDriverObj->txComplete, &higherPriorityTaskWoken);
 
 	// Handle error interrupts.
 	if ((interrupt & (__CAN_IRQ_ERR						//0x4
