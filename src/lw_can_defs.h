@@ -110,22 +110,22 @@ typedef struct
 
 typedef enum  
 {
-	LWCAN_IRQ_RX=			BIT(0),					// RX Interrupt 
-	LWCAN_IRQ_TX=			BIT(1),					// TX Interrupt 
-	LWCAN_IRQ_ERR=			BIT(2),					// Error Interrupt 
-	LWCAN_IRQ_DATA_OVERRUN=	BIT(3),					// Date Overrun Interrupt 
-	LWCAN_IRQ_WAKEUP=		BIT(4),					// Wakeup Interrupt 
-	LWCAN_IRQ_ERR_PASSIVE=	BIT(5),					// Passive Error Interrupt 
-	LWCAN_IRQ_ARB_LOST=		BIT(6),					// Arbitration lost interrupt 
-	LWCAN_IRQ_BUS_ERR=		BIT(7),					// Bus error Interrupt 
+	LWCAN_IRQ_RX =				BIT(0),				// RX Interrupt 
+	LWCAN_IRQ_TX =				BIT(1),				// TX Interrupt 
+	LWCAN_IRQ_ERR =				BIT(2),				// Error Interrupt 
+	LWCAN_IRQ_DATA_OVERRUN =	BIT(3),				// Date Overrun Interrupt 
+	LWCAN_IRQ_WAKEUP =			BIT(4),				// Wakeup Interrupt 
+	LWCAN_IRQ_ERR_PASSIVE =		BIT(5),				// Passive Error Interrupt 
+	LWCAN_IRQ_ARB_LOST =		BIT(6),				// Arbitration lost interrupt 
+	LWCAN_IRQ_BUS_ERR =			BIT(7),				// Bus error Interrupt 
 } lw_can_irq_t;
 
 typedef enum  
 {
-	LWCAN_OC_BOM=			0b00,					// bi-phase output mode 
-	LWCAN_OC_TOM=			0b01,					// test output mode 
-	LWCAN_OC_NOM=			0b10,					// normal output mode 
-	LWCAN_OC_COM=			0b11,					// clock output mode 
+	LWCAN_OC_BOM =			0b00,					// bi-phase output mode 
+	LWCAN_OC_TOM =			0b01,					// test output mode 
+	LWCAN_OC_NOM =			0b10,					// normal output mode 
+	LWCAN_OC_COM =			0b11,					// clock output mode 
 } lw_can_ocmode_t;
 
 typedef struct 
@@ -174,7 +174,7 @@ typedef struct
 	} SR;
 	union
 	{
-		uint32_t U;								// Unsigned access 
+		uint32_t U;									// Unsigned access 
 		struct 
 		{
 			unsigned int RI:1;						// IR.0 Receive Interrupt 
@@ -346,4 +346,4 @@ typedef struct
 		} B;
 	} CDR;
 	uint32_t IRAM[2];
-}CAN_Module_t;
+} CAN_Module_t;
