@@ -16,4 +16,4 @@ extern uint32_t lw_can_get_arb_lost_cnt();
 extern uint32_t lw_can_get_data_overrun_cnt();
 extern uint32_t lw_can_get_wake_up_cnt();
 extern uint32_t lw_can_get_err_passive_cnt();
-extern uint32_t lw_can_bus_error_cnt();
+extern uint32_t lw_can_get_bus_error_cnt();
