@@ -10,4 +10,10 @@ extern bool lw_can_start();
 extern bool lw_can_stop();
 extern bool lw_can_transmit(const CAN_frame_t& frame);
 extern bool lw_can_read_next_frame(CAN_frame_t& outFrame);
+
 extern uint32_t lw_can_get_wd_hits();
+extern uint32_t lw_can_get_arb_lost_cnt();
+extern uint32_t lw_can_get_data_overrun_cnt();
+extern uint32_t lw_can_get_wake_up_cnt();
+extern uint32_t lw_can_get_err_passive_cnt();
+extern uint32_t lw_can_bus_error_cnt();
