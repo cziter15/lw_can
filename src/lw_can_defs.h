@@ -33,18 +33,23 @@
 #include <stdint.h>
 #include "driver/gpio.h"
 
-typedef enum {
+typedef enum 
+{
 	CAN_frame_std=0, 								// Standard frame, using 11 bit identifer. 
 	CAN_frame_ext=1 								// Extended frame, using 29 bit identifer. 
-}CAN_frame_format_t;
+} CAN_frame_format_t;
 
-typedef enum {
+typedef enum 
+{
 	CAN_no_RTR=0, 									// No RTR frame. 
 	CAN_RTR=1 										// RTR frame. 
-}CAN_RTR_t;
+} CAN_RTR_t;
 
-typedef union{uint32_t U;							// Unsigned access 
-	 struct {
+typedef union
+{
+	uint32_t U;							// Unsigned access 
+	 struct 
+	 {
 		uint8_t 			DLC:4;					// [3:0] DLC, Data length container 
 		unsigned int 		unknown_2:2;			// unknown 
 		CAN_RTR_t 			RTR:1;					// [6:6] RTR, Remote Transmission Request 
@@ -54,21 +59,25 @@ typedef union{uint32_t U;							// Unsigned access
 } CAN_FIR_t;
 
 
-typedef struct {
+typedef struct 
+{
 	CAN_FIR_t	FIR;								// Frame information record
 	uint32_t 	MsgID;								// Message ID 
-	union {
+	union 
+	{
 		uint8_t u8[8];								// Payload byte access
 		uint32_t u32[2];							// Payload u32 access
 	} data;
-}CAN_frame_t;
+} CAN_frame_t;
 
-typedef enum {
+typedef enum 
+{
 	Dual_Mode=0, 									// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
 	Single_Mode=1 									// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
 } CAN_filter_mode_t;
 
-typedef struct {
+typedef struct 
+{
 	CAN_filter_mode_t 	FM:1;						// [0:0] Filter Mode 
 	uint8_t 			ACR0;						// Acceptance Code Register ACR0 
 	uint8_t 			ACR1;						// Acceptance Code Register ACR1 
@@ -99,7 +108,8 @@ typedef struct {
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] = ((x) >> 5);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] = ((x) << 3);	\
 
-typedef enum  {
+typedef enum  
+{
 	__CAN_IRQ_RX=			BIT(0),					// RX Interrupt 
 	__CAN_IRQ_TX=			BIT(1),					// TX Interrupt 
 	__CAN_IRQ_ERR=			BIT(2),					// Error Interrupt 
@@ -108,18 +118,23 @@ typedef enum  {
 	__CAN_IRQ_ERR_PASSIVE=	BIT(5),					// Passive Error Interrupt 
 	__CAN_IRQ_ARB_LOST=		BIT(6),					// Arbitration lost interrupt 
 	__CAN_IRQ_BUS_ERR=		BIT(7),					// Bus error Interrupt 
-}__CAN_IRQ_t;
+} __CAN_IRQ_t;
 
-typedef enum  {
+typedef enum  
+{
 	__CAN_OC_BOM=			0b00,					// bi-phase output mode 
 	__CAN_OC_TOM=			0b01,					// test output mode 
 	__CAN_OC_NOM=			0b10,					// normal output mode 
 	__CAN_OC_COM=			0b11,					// clock output mode 
-}__CAN_OCMODE_t;
+} __CAN_OCMODE_t;
 
-typedef struct {
-	union{uint32_t U;								// Unsigned access 
-		struct {
+typedef struct 
+{
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RM:1;						// MOD.0 Reset Mode 
 			unsigned int LOM:1;						// MOD.1 Listen Only Mode 
 			unsigned int STM:1;						// MOD.2 Self Test Mode 
@@ -128,8 +143,11 @@ typedef struct {
 			unsigned int reserved_27:27;			// Reserved 
 		} B;
 	} MOD;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int TR:1;						// CMR.0 Transmission Request 
 			unsigned int AT:1;						// CMR.1 Abort Transmission 
 			unsigned int RRB:1;						// CMR.2 Release Receive Buffer 
@@ -138,8 +156,11 @@ typedef struct {
 			unsigned int reserved_27:27;			// Reserved 
 		} B;
 	} CMR;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RBS:1;						// SR.0 Receive Buffer Status 
 			unsigned int DOS:1;						// SR.1 Data Overrun Status 
 			unsigned int TBS:1;						// SR.2 Transmit Buffer Status 
@@ -151,8 +172,11 @@ typedef struct {
 			unsigned int reserved_24:24;			// Reserved 
 		} B;
 	} SR;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;								// Unsigned access 
+		struct 
+		{
 			unsigned int RI:1;						// IR.0 Receive Interrupt 
 			unsigned int TI:1;						// IR.1 Transmit Interrupt 
 			unsigned int EI:1;						// IR.2 Error Interrupt 
@@ -164,8 +188,11 @@ typedef struct {
 			unsigned int reserved_24:24;			// Reserved 
 		} B;
 	} IR;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RIE:1;						// IER.0 Receive Interrupt Enable 
 			unsigned int TIE:1;						// IER.1 Transmit Interrupt Enable 
 			unsigned int EIE:1;						// IER.2 Error Interrupt Enable 
@@ -178,23 +205,31 @@ typedef struct {
 		} B;
 	} IER;
 	uint32_t RESERVED0;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int BRP:6;						// BTR0[5:0] Baud Rate Prescaler 
 			unsigned int SJW:2;						// BTR0[7:6] Synchronization Jump Width
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} BTR0;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int TSEG1:4;					// BTR1[3:0] Timing Segment 1 
 			unsigned int TSEG2:3;					// BTR1[6:4] Timing Segment 2
 			unsigned int SAM:1;						// BTR1.7 Sampling
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} BTR1;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int OCMODE:2;					// OCR[1:0] Output Control Mode, see # 
 			unsigned int OCPOL0:1;					// OCR.2 Output Control Polarity 0 
 			unsigned int OCTN0:1;					// OCR.3 Output Control Transistor N0 
@@ -206,72 +241,101 @@ typedef struct {
 		} B;
 	} OCR;
 	uint32_t RESERVED1[2];
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int ALC:8; 					// ALC[7:0] Arbitration Lost Capture 
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} ALC;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct
+		{
 			unsigned int ECC:8; 					// ECC[7:0] Error Code Capture 
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} ECC;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int EWLR:8; 					// EWLR[7:0] Error Warning Limit 
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} EWLR;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RXERR:8; 					// RXERR[7:0] Receive Error Counter 
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} RXERR;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct
+		{
 			unsigned int TXERR:8;					// TXERR[7:0] Transmit Error Counter 
 			unsigned int reserved_24:24;			// Reserved  
 		} B;
 	} TXERR;
 
-	union {
-		struct {
+	union 
+	{
+		struct 
+		{
 			uint32_t CODE[4];						// Acceptance Message ID 
 			uint32_t MASK[4];						// Acceptance Mask 
 			uint32_t RESERVED2[5];
 		} ACC;										// Acceptance filtering 
-		struct {
+		struct 
+		{
 			CAN_FIR_t	FIR;						// Frame information record 
-			union{
-				struct {
+			union
+			{
+				struct 
+				{
 					uint32_t ID[2];					// Standard frame message-ID
 					uint32_t data[8];				// Standard frame payload 
 					uint32_t reserved[2];
 				} STD;								// Standard frame format 
-				struct {
+				struct 
+				{
 					uint32_t ID[4];					// Extended frame message-ID
 					uint32_t data[8];				// Extended frame payload 
 				} EXT;								// Extended frame format 
-			}TX_RX;									// RX/TX interface 
-		}FCTRL;										// Function control regs 
+			} TX_RX;								// RX/TX interface 
+		} FCTRL;									// Function control regs 
 	} MBX_CTRL;										// Mailbox control 
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RMC:8; 					// RMC[7:0] RX Message Counter 
 			unsigned int reserved_24:24;			// Reserved Enable 
 		} B;
 	} RMC;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int RBSA:8;					// RBSA[7:0] RX Buffer Start Address  
 			unsigned int reserved_24:24;			// Reserved Enable 
 		} B;
 	} RBSA;
-	union{uint32_t U;								// Unsigned access 
-		struct {
+	union
+	{
+		uint32_t U;									// Unsigned access 
+		struct 
+		{
 			unsigned int COD:3;						// CDR[2:0] CLKOUT frequency selector based of fOSC
 			unsigned int COFF:1;					// CDR.3 CLKOUT off
 			unsigned int reserved_1:1;				// Reserved 

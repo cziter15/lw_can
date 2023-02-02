@@ -31,6 +31,7 @@
 #include "lw_can.h"
 #include <stdint.h>
 #include <math.h>
+#include <byteswap.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -50,22 +51,30 @@ static portMUX_TYPE globalCanSpinLock = portMUX_INITIALIZER_UNLOCKED;
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
-typedef union
-{
-	uint32_t u32;
-	uint8_t u8[4];
-} lw_can_filter_union;
+
 typedef struct 
 {
 	uint8_t	FM;												// Filter mode.
-	uint8_t ACR0;											// ACR0 register.
-	uint8_t ACR1;											// ACR1 register.
-	uint8_t ACR2;											// ACR2 register.
-	uint8_t ACR3;											// ACR3 register.
-	uint8_t AMR0;											// AMR0 register.
-	uint8_t AMR1;											// AMR1 register.
-	uint8_t AMR2;											// AMR2 register.
-	uint8_t AMR3;											// AMR3 register.
+	union
+	{
+		uint32_t U;
+		struct {
+			uint8_t R0;										// ACR0 register.
+			uint8_t R1;										// ACR1 register.
+			uint8_t R2;										// ACR2 register.
+			uint8_t R3;										// ACR3 register.
+		} B;
+	} AC ;
+	union
+	{
+		uint32_t U;
+		struct {
+			uint8_t R0;										// ACR0 register.
+			uint8_t R1;										// ACR1 register.
+			uint8_t R2;										// ACR2 register.
+			uint8_t R3;										// ACR3 register.
+		} B;
+	} AM;
 } lw_can_filter;
 
 
@@ -113,14 +122,8 @@ inline void pdo_reset_bus_counters(lw_can_driver_obj * pdo)
 inline void pdo_reset_filter(lw_can_driver_obj * pdo)
 {
 	pdo->filter.FM = 0;
-	pdo->filter.ACR0 = 0;
-	pdo->filter.ACR1 = 0;
-	pdo->filter.ACR2 = 0;
-	pdo->filter.ACR3 = 0;
-	pdo->filter.AMR0 = 0xFF;
-	pdo->filter.AMR1 = 0xFF;
-	pdo->filter.AMR2 = 0xFF;
-	pdo->filter.AMR3 = 0xFF;
+	pdo->filter.AM.U = 0;
+	pdo->filter.AC.U = 0xFFFFFFFF;
 }
 
 
@@ -264,14 +267,14 @@ bool impl_lw_can_start(bool resetCounters)
 
 		// Set acceptance filter	
 		MODULE_CAN->MOD.B.AFM = pCanDriverObj->filter.FM;	
-		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = pCanDriverObj->filter.ACR0;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = pCanDriverObj->filter.ACR1;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = pCanDriverObj->filter.ACR2;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = pCanDriverObj->filter.ACR3;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = pCanDriverObj->filter.AMR0;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = pCanDriverObj->filter.AMR1;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = pCanDriverObj->filter.AMR2;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pCanDriverObj->filter.AMR3;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = pCanDriverObj->filter.AC.B.R0;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = pCanDriverObj->filter.AC.B.R1;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = pCanDriverObj->filter.AC.B.R2;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = pCanDriverObj->filter.AC.B.R3;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = pCanDriverObj->filter.AM.B.R0;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = pCanDriverObj->filter.AM.B.R1;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = pCanDriverObj->filter.AM.B.R2;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pCanDriverObj->filter.AM.B.R3;
 
 		// Set to normal mode
 		MODULE_CAN->OCR.B.OCMODE = __CAN_OC_NOM;
@@ -342,23 +345,11 @@ bool impl_lw_can_stop()
 
 bool impl_lw_can_set_filter(uint32_t messageId)
 {
-	lw_can_filter_union acceptance_code;
-	acceptance_code.u32 = messageId << 21;
-
-	lw_can_filter_union acceptance_mask;
-	acceptance_mask.u32 = ~(0x7FFU << 21);
-
 	if (pCanDriverObj != NULL && !pCanDriverObj->isStarted)
 	{
-		pCanDriverObj->filter.FM = 0;
-		pCanDriverObj->filter.ACR0 = acceptance_code.u8[3];
-		pCanDriverObj->filter.ACR1 = acceptance_code.u8[2];
-		pCanDriverObj->filter.ACR2 = acceptance_code.u8[1];
-		pCanDriverObj->filter.ACR3 = acceptance_code.u8[0];
-		pCanDriverObj->filter.AMR0 = acceptance_mask.u8[3];
-		pCanDriverObj->filter.AMR1 = acceptance_mask.u8[2];
-		pCanDriverObj->filter.AMR2 = acceptance_mask.u8[1];
-		pCanDriverObj->filter.AMR3 = acceptance_mask.u8[0];
+		pCanDriverObj->filter.FM = CAN_filter_mode_t::Single_Mode;
+		pCanDriverObj->filter.AC.U = __bswap32(messageId);
+		pCanDriverObj->filter.AM.U = 0xFFFFFFFF;
 		return true;
 	}
 	return false;
@@ -381,15 +372,19 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 		pCanDriverObj->rxQueueSize = rxQueueSize;
 		pCanDriverObj->txQueueSize = txQueueSize;
 
+		// Reset wdt counter.
 		pCanDriverObj->wd_hit_cnt = 0;
 
 		// Setup states.
 		pCanDriverObj->isStarted = false;
 		pCanDriverObj->needReset = false;
 
+		// Reset filter.
 		pdo_reset_filter(pCanDriverObj);
 
+		// Create watchdog task.
 		xTaskCreatePinnedToCore(&lw_can_watchdog, "lw_can_wdt", 2048, NULL, 10, &pCanDriverObj->wdtHandle, 1);
+
 		return true;
 	}
 
