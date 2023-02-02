@@ -42,23 +42,23 @@
 //===================================================================================================================
 // Critical sections.
 //===================================================================================================================
-static portMUX_TYPE globalCanSpinLock = portMUX_INITIALIZER_UNLOCKED;
-#define LWCAN_ENTER_CRITICAL()			portENTER_CRITICAL(&globalCanSpinLock)
-#define LWCAN_EXIT_CRITICAL()			portEXIT_CRITICAL(&globalCanSpinLock)
-#define LWCAN_ENTER_CRITICAL_ISR()		portENTER_CRITICAL_ISR(&globalCanSpinLock)
-#define LWCAN_EXIT_CRITICAL_ISR()		portEXIT_CRITICAL_ISR(&globalCanSpinLock)
+static portMUX_TYPE globalCanSpinLock 	=	 portMUX_INITIALIZER_UNLOCKED;
+#define LWCAN_ENTER_CRITICAL()				portENTER_CRITICAL(&globalCanSpinLock)
+#define LWCAN_EXIT_CRITICAL()				portEXIT_CRITICAL(&globalCanSpinLock)
+#define LWCAN_ENTER_CRITICAL_ISR()			portENTER_CRITICAL_ISR(&globalCanSpinLock)
+#define LWCAN_EXIT_CRITICAL_ISR()			portEXIT_CRITICAL_ISR(&globalCanSpinLock)
 
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
-
 typedef struct 
 {
 	uint8_t	FM;												// Filter mode.
 	union
 	{
 		uint32_t U;
-		struct {
+		struct 
+		{
 			uint8_t R0;										// ACR0 register.
 			uint8_t R1;										// ACR1 register.
 			uint8_t R2;										// ACR2 register.
@@ -68,7 +68,8 @@ typedef struct
 	union
 	{
 		uint32_t U;
-		struct {
+		struct 
+		{
 			uint8_t R0;										// ACR0 register.
 			uint8_t R1;										// ACR1 register.
 			uint8_t R2;										// ACR2 register.
@@ -76,7 +77,6 @@ typedef struct
 		} B;
 	} AM;
 } lw_can_filter;
-
 
 typedef struct
 {
@@ -108,8 +108,6 @@ typedef struct
 	bool needReset;											// Flag to indicate if need to reset CAN peripheral.
 } lw_can_driver_obj;
 
-static lw_can_driver_obj* pCanDriverObj = NULL; 			// Driver object pointer
-
 inline void pdo_reset_bus_counters(lw_can_driver_obj * pdo)
 {
 	pdo->arb_lost_cnt = 0;
@@ -121,11 +119,12 @@ inline void pdo_reset_bus_counters(lw_can_driver_obj * pdo)
 
 inline void pdo_reset_filter(lw_can_driver_obj * pdo)
 {
-	pdo->filter.FM = 0;
+	pdo->filter.FM = CAN_filter_mode_t::Dual_Mode;
 	pdo->filter.AM.U = 0;
 	pdo->filter.AC.U = 0xFFFFFFFF;
 }
 
+static lw_can_driver_obj* pCanDriverObj = NULL; 			// Driver object pointer
 
 //===================================================================================================================
 // Required forward declarations
@@ -415,6 +414,7 @@ bool impl_lw_can_uninstall()
 
 	return false;
 }
+
 //===================================================================================================================
 // Remember to use spinlock properly.
 //===================================================================================================================
@@ -490,7 +490,7 @@ void lw_can_watchdog(void* param)
 		LWCAN_EXIT_CRITICAL();
 	}
 }
- 
+
 //===================================================================================================================
 // PUBLIC API
 // Remember to use spinlock properly.
@@ -613,6 +613,7 @@ uint32_t lw_can_get_bus_error_cnt()
 	LWCAN_EXIT_CRITICAL();
 	return bus_error_cnt;
 }
+
 //===================================================================================================================
 // END PUBLIC API
 //===================================================================================================================
