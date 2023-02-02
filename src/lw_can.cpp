@@ -29,68 +29,77 @@
  */
 
 #include "lw_can.h"
-#include "math.h"
 #include <stdint.h>
+#include <math.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-
 #include "soc/dport_reg.h"
 
-// Spinlock.
-static portMUX_TYPE builtincan_spinlock = portMUX_INITIALIZER_UNLOCKED;
-#define LWCAN_ENTER_CRITICAL()  	portENTER_CRITICAL(&builtincan_spinlock)
-#define LWCAN_EXIT_CRITICAL()   	portEXIT_CRITICAL(&builtincan_spinlock)
-#define LWCAN_ENTER_CRITICAL_ISR()  portENTER_CRITICAL_ISR(&builtincan_spinlock)
-#define LWCAN_EXIT_CRITICAL_ISR()   portEXIT_CRITICAL_ISR(&builtincan_spinlock)
+//===================================================================================================================
+// Critical sections.
+//===================================================================================================================
+static portMUX_TYPE globalCanSpinLock = portMUX_INITIALIZER_UNLOCKED;
+#define LWCAN_ENTER_CRITICAL()			portENTER_CRITICAL(&globalCanSpinLock)
+#define LWCAN_EXIT_CRITICAL()			portEXIT_CRITICAL(&globalCanSpinLock)
+#define LWCAN_ENTER_CRITICAL_ISR()		portENTER_CRITICAL_ISR(&globalCanSpinLock)
+#define LWCAN_EXIT_CRITICAL_ISR()		portEXIT_CRITICAL_ISR(&globalCanSpinLock)
 
-// Can filter struct.
-struct lw_can_filter
+//===================================================================================================================
+// Driver object
+//===================================================================================================================
+typedef union
 {
-	uint8_t	FM;
-	uint8_t ACR0;
-	uint8_t ACR1;
-	uint8_t ACR2;
-	uint8_t ACR3;
-	uint8_t AMR0;
-	uint8_t AMR1;
-	uint8_t AMR2;
-	uint8_t AMR3;
-};
-
-// Driver object struct.
-struct lw_can_driver_obj
+	uint32_t u32;
+	uint8_t u8[4];
+} lw_can_filter_union;
+typedef struct 
 {
-	lw_can_filter filter;
+	uint8_t	FM;												// Filter mode.
+	uint8_t ACR0;											// ACR0 register.
+	uint8_t ACR1;											// ACR1 register.
+	uint8_t ACR2;											// ACR2 register.
+	uint8_t ACR3;											// ACR3 register.
+	uint8_t AMR0;											// AMR0 register.
+	uint8_t AMR1;											// AMR1 register.
+	uint8_t AMR2;											// AMR2 register.
+	uint8_t AMR3;											// AMR3 register.
+} lw_can_filter;
 
-	gpio_num_t txPin;
-	gpio_num_t rxPin;
-	uint16_t speedKbps;
 
-	uint8_t rxQueueSize;
-	uint8_t txQueueSize;
+typedef struct
+{
+	lw_can_filter filter;									// Filter settings.
 
-	QueueHandle_t rxQueue;
-	QueueHandle_t txQueue;
+	gpio_num_t txPin;										// CAN TX pin.
+	gpio_num_t rxPin;										// CAN RX pin.
+	uint16_t speedKbps;										// CAN speed in kbps.
 
-	SemaphoreHandle_t txComplete;
-	intr_handle_t intrHandle;
-	TaskHandle_t wdtHandle;
+	uint8_t rxQueueSize;									// CAN RX queue size.
+	uint8_t txQueueSize;									// CAN TX queue size.
 
-	uint32_t wd_hit_cnt;
+	QueueHandle_t rxQueue;									// CAN RX queue handle.
+	QueueHandle_t txQueue;									// CAN TX queue handle.
 
-	uint32_t arb_lost_cnt;
-	uint32_t data_overrun_cnt;
-	uint32_t wake_up_cnt;
-	uint32_t err_passive_cnt;
-	uint32_t bus_error_cnt;
+	SemaphoreHandle_t txComplete;							// CAN TX complete semaphore.
+	intr_handle_t intrHandle;								// CAN interrupt handle.
+	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
 
-	bool isStarted;
-	bool needReset;
-};
+	uint32_t wd_hit_cnt;									// Watchdog hit counter.
 
+	uint32_t arb_lost_cnt;									// Arbitration lost counter.
+	uint32_t data_overrun_cnt;								// Data overrun counter.
+	uint32_t wake_up_cnt;									// Wake up counter.
+	uint32_t err_passive_cnt;								// Error passive counter.
+	uint32_t bus_error_cnt;									// Bus error counter.
+
+	bool isStarted;											// Flag to indicate if CAN driver is started.
+	bool needReset;											// Flag to indicate if need to reset CAN peripheral.
+} lw_can_driver_obj;
+
+static lw_can_driver_obj* pCanDriverObj = NULL; 			// Driver object pointer
 
 inline void pdo_reset_bus_counters(lw_can_driver_obj * pdo)
 {
@@ -114,14 +123,12 @@ inline void pdo_reset_filter(lw_can_driver_obj * pdo)
 	pdo->filter.AMR3 = 0xFF;
 }
 
-// Driver object pointer.
-static lw_can_driver_obj* pDriverObj = NULL;
 
 //===================================================================================================================
 // Required forward declarations
 //===================================================================================================================
-void IRAM_ATTR lw_can_interrupt(void *arg_p);
-void lw_can_watchdog(void *pvParameters);
+void IRAM_ATTR lw_can_interrupt(void *arg);
+void lw_can_watchdog(void *param);
 
 //===================================================================================================================
 // Spinlock free functions
@@ -151,7 +158,7 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 		}
 	}
 
-	xQueueSendFromISR(pDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
+	xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 	MODULE_CAN->CMR.B.RRB = 1;
 }
 
@@ -182,7 +189,7 @@ bool impl_write_frame_phy(const CAN_frame_t *p_frame)
 
 bool impl_lw_can_start(bool resetCounters)
 {
-	if (pDriverObj && !pDriverObj->isStarted)
+	if (pCanDriverObj && !pCanDriverObj->isStarted)
 	{
 		// Time quantum
 		double quanta;
@@ -196,15 +203,15 @@ bool impl_lw_can_start(bool resetCounters)
 		MODULE_CAN->IER.U = 0; 
 
 		// configure TX pin
-		gpio_set_level(pDriverObj->txPin, 0);
-		gpio_set_direction(pDriverObj->txPin, GPIO_MODE_OUTPUT);
-		gpio_matrix_out(pDriverObj->txPin, CAN_TX_IDX, 0, 0);
-		gpio_pad_select_gpio(pDriverObj->txPin);
+		gpio_set_level(pCanDriverObj->txPin, 0);
+		gpio_set_direction(pCanDriverObj->txPin, GPIO_MODE_OUTPUT);
+		gpio_matrix_out(pCanDriverObj->txPin, CAN_TX_IDX, 0, 0);
+		gpio_pad_select_gpio(pCanDriverObj->txPin);
 
 		// configure RX pin
-		gpio_set_direction(pDriverObj->rxPin, GPIO_MODE_INPUT);
-		gpio_matrix_in(pDriverObj->rxPin, CAN_RX_IDX, 0);
-		gpio_pad_select_gpio(pDriverObj->rxPin);
+		gpio_set_direction(pCanDriverObj->rxPin, GPIO_MODE_INPUT);
+		gpio_matrix_in(pCanDriverObj->rxPin, CAN_RX_IDX, 0);
+		gpio_pad_select_gpio(pCanDriverObj->rxPin);
 
 		// set to PELICAN mode
 		MODULE_CAN->CDR.B.CAN_M = 0x1;
@@ -216,30 +223,34 @@ bool impl_lw_can_start(bool resetCounters)
 		MODULE_CAN->BTR1.B.TSEG2 = 0x1;
 
 		// select time quantum and set TSEG1
-		switch (pDriverObj->speedKbps) 
+		switch (pCanDriverObj->speedKbps) 
 		{
+			// 1000 kbps
 			case 1000:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x4;
 				quanta = 0.125;
 			break;
 
+			// 8000 kbps
 			case 800:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x6;
 				quanta = 0.125;
 			break;
 
+			/// 200 kbps
 			case 200:
 				MODULE_CAN->BTR1.B.TSEG1 = 0xc;
 				MODULE_CAN->BTR1.B.TSEG2 = 0x5;
 				quanta = 0.25;
 			break;
 
+			/// all other baud rates
 			default:
 				MODULE_CAN->BTR1.B.TSEG1 = 0xc;
-				quanta = ((float) 1000 / pDriverObj->speedKbps) / 16;
+				quanta = ((float) 1000 / pCanDriverObj->speedKbps) / 16;
 		}
 
-		// set baud rate prescaler
+		// Calculate and set baud rate prescaler.
 		MODULE_CAN->BTR0.B.BRP = (uint8_t) round((((APB_CLK_FREQ * quanta) / 2) - 1) / 1000000) - 1;
 
 		/* Set sampling
@@ -252,43 +263,43 @@ bool impl_lw_can_start(bool resetCounters)
 		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 		// Set acceptance filter	
-		MODULE_CAN->MOD.B.AFM = pDriverObj->filter.FM;	
-		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = pDriverObj->filter.ACR0;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = pDriverObj->filter.ACR1;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = pDriverObj->filter.ACR2;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = pDriverObj->filter.ACR3;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = pDriverObj->filter.AMR0;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = pDriverObj->filter.AMR1;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = pDriverObj->filter.AMR2;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pDriverObj->filter.AMR3;
+		MODULE_CAN->MOD.B.AFM = pCanDriverObj->filter.FM;	
+		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = pCanDriverObj->filter.ACR0;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = pCanDriverObj->filter.ACR1;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = pCanDriverObj->filter.ACR2;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = pCanDriverObj->filter.ACR3;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = pCanDriverObj->filter.AMR0;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = pCanDriverObj->filter.AMR1;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = pCanDriverObj->filter.AMR2;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pCanDriverObj->filter.AMR3;
 
-		// set to normal mode
+		// Set to normal mode
 		MODULE_CAN->OCR.B.OCMODE = __CAN_OC_NOM;
 
-		// clear error counters
+		// Clear error counters
 		MODULE_CAN->TXERR.U = 0;
 		MODULE_CAN->RXERR.U = 0;
 		(void) MODULE_CAN->ECC;
 
-		// clear interrupt flags
+		// Clear interrupt flags
 		(void) MODULE_CAN->IR.U;
 
-		// allocate the tx complete semaphore
-		pDriverObj->txComplete = xSemaphoreCreateBinary();
+		// Allocate the tx complete semaphore.
+		pCanDriverObj->txComplete = xSemaphoreCreateBinary();
 
-		// allocate queues
-		pDriverObj->rxQueue = xQueueCreate(pDriverObj->rxQueueSize, sizeof(CAN_frame_t));
-		pDriverObj->txQueue = xQueueCreate(pDriverObj->txQueueSize, sizeof(CAN_frame_t));
+		// Allocate queues.
+		pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(CAN_frame_t));
+		pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(CAN_frame_t));
 
-		// install CAN ISR
-		esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, NULL, &pDriverObj->intrHandle);
+		// Install CAN interrupt service.
+		esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, NULL, &pCanDriverObj->intrHandle);
 
-		// Reset counters
+		// Reset counters.
 		if (resetCounters)
-			pdo_reset_bus_counters(pDriverObj);
+			pdo_reset_bus_counters(pCanDriverObj);
 
 		// Set state.
-		pDriverObj->isStarted = true;
+		pCanDriverObj->isStarted = true;
 
 		// Showtime. Release Reset Mode.
 		MODULE_CAN->MOD.B.RM = 0;
@@ -301,17 +312,28 @@ bool impl_lw_can_start(bool resetCounters)
 
 bool impl_lw_can_stop()
 {
-	if (pDriverObj && pDriverObj->isStarted)
+	if (pCanDriverObj && pCanDriverObj->isStarted)
 	{
+		// Reset the module.
 		MODULE_CAN->MOD.B.RM = 1;
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 		MODULE_CAN->IER.U = 0;
 
-		esp_intr_free(pDriverObj->intrHandle);
-		vSemaphoreDelete(pDriverObj->txComplete);
-		pDriverObj->needReset = false;
-		pDriverObj->isStarted = false;
+		// Remove interrupt and semaphore.
+		esp_intr_free(pCanDriverObj->intrHandle);
+
+		// Delete queues.
+		vQueueDelete(pCanDriverObj->txQueue);
+		vQueueDelete(pCanDriverObj->rxQueue);
+		
+		// Delete semaphores.
+		vSemaphoreDelete(pCanDriverObj->txComplete);
+
+		// Clear state flags.
+		pCanDriverObj->needReset = false;
+		pCanDriverObj->isStarted = false;
+
 		return true;
 	}
 
@@ -320,29 +342,23 @@ bool impl_lw_can_stop()
 
 bool impl_lw_can_set_filter(uint32_t messageId)
 {
-	union FilterData
-	{
-		uint32_t u32;
-		uint8_t u8[4];
-	};
-	
-	FilterData acceptance_code;
+	lw_can_filter_union acceptance_code;
 	acceptance_code.u32 = messageId << 21;
 
-	FilterData acceptance_mask;
+	lw_can_filter_union acceptance_mask;
 	acceptance_mask.u32 = ~(0x7FFU << 21);
 
-	if (pDriverObj != NULL && !pDriverObj->isStarted)
+	if (pCanDriverObj != NULL && !pCanDriverObj->isStarted)
 	{
-		pDriverObj->filter.FM = 0;
-		pDriverObj->filter.ACR0 = acceptance_code.u8[3];
-		pDriverObj->filter.ACR1 = acceptance_code.u8[2];
-		pDriverObj->filter.ACR2 = acceptance_code.u8[1];
-		pDriverObj->filter.ACR3 = acceptance_code.u8[0];
-		pDriverObj->filter.AMR0 = acceptance_mask.u8[3];
-		pDriverObj->filter.AMR1 = acceptance_mask.u8[2];
-		pDriverObj->filter.AMR2 = acceptance_mask.u8[1];
-		pDriverObj->filter.AMR3 = acceptance_mask.u8[0];
+		pCanDriverObj->filter.FM = 0;
+		pCanDriverObj->filter.ACR0 = acceptance_code.u8[3];
+		pCanDriverObj->filter.ACR1 = acceptance_code.u8[2];
+		pCanDriverObj->filter.ACR2 = acceptance_code.u8[1];
+		pCanDriverObj->filter.ACR3 = acceptance_code.u8[0];
+		pCanDriverObj->filter.AMR0 = acceptance_mask.u8[3];
+		pCanDriverObj->filter.AMR1 = acceptance_mask.u8[2];
+		pCanDriverObj->filter.AMR2 = acceptance_mask.u8[1];
+		pCanDriverObj->filter.AMR3 = acceptance_mask.u8[0];
 		return true;
 	}
 	return false;
@@ -350,30 +366,30 @@ bool impl_lw_can_set_filter(uint32_t messageId)
 
 bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize)
 {
-	if (pDriverObj == NULL)
+	if (pCanDriverObj == NULL)
 	{
-		pDriverObj = new lw_can_driver_obj();
+		pCanDriverObj = new lw_can_driver_obj();
 
 		// Setup pins.
-		pDriverObj->txPin = txPin;
-		pDriverObj->rxPin = rxPin;
+		pCanDriverObj->txPin = txPin;
+		pCanDriverObj->rxPin = rxPin;
 
 		// Setup speed.
-		pDriverObj->speedKbps = speedKbps;
+		pCanDriverObj->speedKbps = speedKbps;
 
 		// Copy queue sizes.
-		pDriverObj->rxQueueSize = rxQueueSize;
-		pDriverObj->txQueueSize = txQueueSize;
+		pCanDriverObj->rxQueueSize = rxQueueSize;
+		pCanDriverObj->txQueueSize = txQueueSize;
 
-		pDriverObj->wd_hit_cnt = 0;
+		pCanDriverObj->wd_hit_cnt = 0;
 
 		// Setup states.
-		pDriverObj->isStarted = false;
-		pDriverObj->needReset = false;
+		pCanDriverObj->isStarted = false;
+		pCanDriverObj->needReset = false;
 
-		pdo_reset_filter(pDriverObj);
+		pdo_reset_filter(pCanDriverObj);
 
-		xTaskCreatePinnedToCore(&lw_can_watchdog, "lw_can_wdt", 2048, NULL, 10, &pDriverObj->wdtHandle, 1);
+		xTaskCreatePinnedToCore(&lw_can_watchdog, "lw_can_wdt", 2048, NULL, 10, &pCanDriverObj->wdtHandle, 1);
 		return true;
 	}
 
@@ -382,22 +398,22 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 
 bool impl_lw_can_uninstall()
 {
-	if (pDriverObj != NULL)
+	if (pCanDriverObj != NULL)
 	{
 		// Stop driver if working.
-		if (pDriverObj->isStarted)
+		if (pCanDriverObj->isStarted)
 			impl_lw_can_stop();
 		
 		// Delete watchdog task.
-		vTaskDelete(pDriverObj->wdtHandle);
+		vTaskDelete(pCanDriverObj->wdtHandle);
 
 		// Reset pins.
-		gpio_reset_pin(pDriverObj->rxPin);
-		gpio_reset_pin(pDriverObj->txPin);
+		gpio_reset_pin(pCanDriverObj->rxPin);
+		gpio_reset_pin(pCanDriverObj->txPin);
 
 		// Delete driver object.
-		delete pDriverObj;
-		pDriverObj = NULL;
+		delete pCanDriverObj;
+		pCanDriverObj = NULL;
 
 		return true;
 	}
@@ -407,7 +423,7 @@ bool impl_lw_can_uninstall()
 //===================================================================================================================
 // Remember to use spinlock properly.
 //===================================================================================================================
-void IRAM_ATTR lw_can_interrupt(void *arg_p)
+void IRAM_ATTR lw_can_interrupt(void* arg)
 {
 	LWCAN_ENTER_CRITICAL_ISR();
 
@@ -417,19 +433,19 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 
 	// Handle counters.
 	if ((interrupt & __CAN_IRQ_ARB_LOST) != 0)
-		++pDriverObj->arb_lost_cnt;
+		++pCanDriverObj->arb_lost_cnt;
 	
 	if ((interrupt & __CAN_IRQ_DATA_OVERRUN) != 0)
-		++pDriverObj->data_overrun_cnt;
+		++pCanDriverObj->data_overrun_cnt;
 
 	if ((interrupt & __CAN_IRQ_WAKEUP) != 0)
-		++pDriverObj->wake_up_cnt;
+		++pCanDriverObj->wake_up_cnt;
 
 	if ((interrupt & __CAN_IRQ_ERR_PASSIVE) != 0)
-		++pDriverObj->err_passive_cnt;
+		++pCanDriverObj->err_passive_cnt;
 
 	if ((interrupt & __CAN_IRQ_BUS_ERR) != 0)
-		++pDriverObj->bus_error_cnt;
+		++pCanDriverObj->bus_error_cnt;
 
 	// Handle RX frame available interrupt
 	if ((interrupt & __CAN_IRQ_RX) != 0)
@@ -442,7 +458,7 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 
 	// Handle TX complete interrupt
 	if ((interrupt & __CAN_IRQ_TX) != 0)
-		xSemaphoreGiveFromISR(pDriverObj->txComplete, &higherPriorityTaskWoken);
+		xSemaphoreGiveFromISR(pCanDriverObj->txComplete, &higherPriorityTaskWoken);
 
 	// Handle error interrupts.
 	if ((interrupt & (__CAN_IRQ_ERR						//0x4
@@ -452,7 +468,7 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 					| __CAN_IRQ_BUS_ERR				//0x80
 					)) != 0) 
 	{
-		pDriverObj->needReset = true;
+		pCanDriverObj->needReset = true;
 	}
 
 	LWCAN_EXIT_CRITICAL_ISR();
@@ -461,7 +477,7 @@ void IRAM_ATTR lw_can_interrupt(void *arg_p)
 		portYIELD_FROM_ISR();
 }
 
-void lw_can_watchdog(void *pvParameters)
+void lw_can_watchdog(void* param)
 {
 	const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
 	bool doReset = false;
@@ -470,11 +486,11 @@ void lw_can_watchdog(void *pvParameters)
 		vTaskDelay( xDelay );
 
 		LWCAN_ENTER_CRITICAL();
-		if (pDriverObj && pDriverObj->isStarted && pDriverObj->needReset)
+		if (pCanDriverObj && pCanDriverObj->isStarted && pCanDriverObj->needReset)
 		{
 			impl_lw_can_stop();
 			impl_lw_can_start(false);
-			pDriverObj->wd_hit_cnt++;
+			pCanDriverObj->wd_hit_cnt++;
 		}
 		LWCAN_EXIT_CRITICAL();
 	}
@@ -525,8 +541,8 @@ bool lw_can_transmit(const CAN_frame_t& frame)
 	bool frameSent;
 	SemaphoreHandle_t txSemaphore;
 	LWCAN_ENTER_CRITICAL();
-	txSemaphore = pDriverObj->txComplete;
-	frameSent = pDriverObj->isStarted && impl_write_frame_phy(&frame);
+	txSemaphore = pCanDriverObj->txComplete;
+	frameSent = pCanDriverObj->isStarted && impl_write_frame_phy(&frame);
 	LWCAN_EXIT_CRITICAL();
 	return frameSent && xSemaphoreTake(txSemaphore, 100);
 }
@@ -535,7 +551,7 @@ bool lw_can_read_next_frame(CAN_frame_t& outFrame)
 {
 	QueueHandle_t rxQueue;
 	LWCAN_ENTER_CRITICAL();
-	rxQueue = (pDriverObj != NULL && pDriverObj->isStarted) ? pDriverObj->rxQueue : NULL;
+	rxQueue = (pCanDriverObj != NULL && pCanDriverObj->isStarted) ? pCanDriverObj->rxQueue : NULL;
 	LWCAN_EXIT_CRITICAL();
 	return rxQueue != NULL && xQueueReceive(rxQueue, &outFrame, 0) == pdTRUE;
 }
@@ -553,7 +569,7 @@ uint32_t lw_can_get_wd_hits()
 {
 	uint32_t wd_hit_cnt;
 	LWCAN_ENTER_CRITICAL();
-	wd_hit_cnt = pDriverObj != NULL ? pDriverObj->wd_hit_cnt : 0;
+	wd_hit_cnt = pCanDriverObj != NULL ? pCanDriverObj->wd_hit_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return wd_hit_cnt;
 }
@@ -562,7 +578,7 @@ uint32_t lw_can_get_arb_lost_cnt()
 {
 	uint32_t arb_lost_cnt;
 	LWCAN_ENTER_CRITICAL();
-	arb_lost_cnt = pDriverObj != NULL ? pDriverObj->arb_lost_cnt : 0;
+	arb_lost_cnt = pCanDriverObj != NULL ? pCanDriverObj->arb_lost_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return arb_lost_cnt;
 }
@@ -571,7 +587,7 @@ uint32_t lw_can_get_data_overrun_cnt()
 {
 	uint32_t data_overrun_cnt;
 	LWCAN_ENTER_CRITICAL();
-	data_overrun_cnt = pDriverObj != NULL ? pDriverObj->data_overrun_cnt : 0;
+	data_overrun_cnt = pCanDriverObj != NULL ? pCanDriverObj->data_overrun_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return data_overrun_cnt;
 }
@@ -580,7 +596,7 @@ uint32_t lw_can_get_wake_up_cnt()
 {
 	uint32_t wake_up_cnt;
 	LWCAN_ENTER_CRITICAL();
-	wake_up_cnt = pDriverObj != NULL ? pDriverObj->wake_up_cnt : 0;
+	wake_up_cnt = pCanDriverObj != NULL ? pCanDriverObj->wake_up_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return wake_up_cnt;
 }
@@ -589,7 +605,7 @@ uint32_t lw_can_get_err_passive_cnt()
 {
 	uint32_t err_passive_cnt;
 	LWCAN_ENTER_CRITICAL();
-	err_passive_cnt = pDriverObj != NULL ? pDriverObj->err_passive_cnt : 0;
+	err_passive_cnt = pCanDriverObj != NULL ? pCanDriverObj->err_passive_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return err_passive_cnt;
 }
@@ -598,7 +614,7 @@ uint32_t lw_can_get_bus_error_cnt()
 {
 	uint32_t bus_error_cnt;
 	LWCAN_ENTER_CRITICAL();
-	bus_error_cnt = pDriverObj != NULL ? pDriverObj->bus_error_cnt : 0;
+	bus_error_cnt = pCanDriverObj != NULL ? pCanDriverObj->bus_error_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
 	return bus_error_cnt;
 }
