@@ -303,7 +303,11 @@ bool impl_lw_can_stop()
 {
 	if (pDriverObj && pDriverObj->isStarted)
 	{
-		MODULE_CAN->MOD.B.RM = 0;
+		MODULE_CAN->MOD.B.RM = 1;
+		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
+		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
+		MODULE_CAN->IER.U = 0;
+
 		esp_intr_free(pDriverObj->intrHandle);
 		vSemaphoreDelete(pDriverObj->txComplete);
 		pDriverObj->needReset = false;
