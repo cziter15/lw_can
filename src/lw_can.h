@@ -85,7 +85,7 @@ extern bool lw_can_stop();
 
 	@return true if frame has been queued for TX, false otherwise.
 */
-extern bool lw_can_transmit(const CAN_frame_t& frame);
+extern bool lw_can_transmit(const lw_can_frame_t& frame);
 
 /*
 	This function reads CAN frame from queue.
@@ -94,7 +94,7 @@ extern bool lw_can_transmit(const CAN_frame_t& frame);
 
 	@return true if frame has been read, false otherwise.
 */
-extern bool lw_can_read_next_frame(CAN_frame_t& outFrame);
+extern bool lw_can_read_next_frame(lw_can_frame_t& outFrame);
 
 /*
 	This function return the count of watchdog hits (automatic bus reset).

@@ -37,24 +37,24 @@ typedef enum
 {
 	CAN_frame_std=0, 								// Standard frame, using 11 bit identifer. 
 	CAN_frame_ext=1 								// Extended frame, using 29 bit identifer. 
-} CAN_frame_format_t;
+} lw_can_frame_format_t;
 
 typedef enum 
 {
 	CAN_no_RTR=0, 									// No RTR frame. 
 	CAN_RTR=1 										// RTR frame. 
-} CAN_RTR_t;
+} lw_can_rtr_t;
 
 typedef union
 {
-	uint32_t U;							// Unsigned access 
+	uint32_t U;										// Unsigned access 
 	 struct 
 	 {
-		uint8_t 			DLC:4;					// [3:0] DLC, Data length container 
-		unsigned int 		unknown_2:2;			// unknown 
-		CAN_RTR_t 			RTR:1;					// [6:6] RTR, Remote Transmission Request 
-		CAN_frame_format_t 	FF:1;					// [7:7] Frame Format, see# CAN_frame_format_t
-		unsigned int 		reserved_24:24;			// Reserved 
+		uint8_t 				DLC:4;				// [3:0] DLC, Data length container 
+		unsigned int 			unknown_2:2;		// unknown 
+		lw_can_rtr_t 			RTR:1;				// [6:6] RTR, Remote Transmission Request 
+		lw_can_frame_format_t 	FF:1;				// [7:7] Frame Format, see# lw_can_frame_format_t
+		unsigned int 			reserved_24:24;		// Reserved 
 	} B;
 } CAN_FIR_t;
 
@@ -68,65 +68,65 @@ typedef struct
 		uint8_t u8[8];								// Payload byte access
 		uint32_t u32[2];							// Payload u32 access
 	} data;
-} CAN_frame_t;
+} lw_can_frame_t;
 
 typedef enum 
 {
-	Dual_Mode=0, 									// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
-	Single_Mode=1 									// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
-} CAN_filter_mode_t;
+	Dual=0, 										// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
+	Single=1 										// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
+} lw_can_filter_mode_t;
 
 typedef struct 
 {
-	CAN_filter_mode_t 	FM:1;						// [0:0] Filter Mode 
-	uint8_t 			ACR0;						// Acceptance Code Register ACR0 
-	uint8_t 			ACR1;						// Acceptance Code Register ACR1 
-	uint8_t 			ACR2;						// Acceptance Code Register ACR2 
-	uint8_t 			ACR3;						// Acceptance Code Register ACR3 
-	uint8_t 			AMR0;						// Acceptance Mask Register AMR0 
-	uint8_t 			AMR1;						// Acceptance Mask Register AMR1 
-	uint8_t 			AMR2;						// Acceptance Mask Register AMR2 
-	uint8_t 			AMR3;						// Acceptance Mask Register AMR3 
+	lw_can_filter_mode_t 	FM:1;					// [0:0] Filter Mode 
+	uint8_t 				ACR0;					// Acceptance Code Register ACR0 
+	uint8_t 				ACR1;					// Acceptance Code Register ACR1 
+	uint8_t 				ACR2;					// Acceptance Code Register ACR2 
+	uint8_t 				ACR3;					// Acceptance Code Register ACR3 
+	uint8_t 				AMR0;					// Acceptance Mask Register AMR0 
+	uint8_t 				AMR1;					// Acceptance Mask Register AMR1 
+	uint8_t 				AMR2;					// Acceptance Mask Register AMR2 
+	uint8_t 				AMR3;					// Acceptance Mask Register AMR3 
 } CAN_filter_t;
 
 
 #define MODULE_CAN									((volatile CAN_Module_t    *)0x3ff6b000)
 
-#define _CAN_GET_STD_ID								(((uint32_t)MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[0] << 3) | \
+#define LWCAN_GET_STD_ID							(((uint32_t)MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[0] << 3) | \
 													(MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[1] >> 5))
 
-#define _CAN_GET_EXT_ID								(((uint32_t)MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[0] << 21) | \
+#define LWCAN_GET_EXT_ID							(((uint32_t)MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[0] << 21) | \
 													(MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[1] << 13) | \
 													(MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] << 5) | \
 													(MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] >> 3 ))
 
-#define _CAN_SET_STD_ID(x)							MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[0] = ((x) >> 3);	\
+#define LWCAN_SET_STD_ID(x)							MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[0] = ((x) >> 3);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.ID[1] = ((x) << 5);
 
-#define _CAN_SET_EXT_ID(x)							MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[0] = ((x) >> 21);	\
+#define LWCAN_SET_EXT_ID(x)							MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[0] = ((x) >> 21);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[1] = ((x) >> 13);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] = ((x) >> 5);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] = ((x) << 3);	\
 
 typedef enum  
 {
-	__CAN_IRQ_RX=			BIT(0),					// RX Interrupt 
-	__CAN_IRQ_TX=			BIT(1),					// TX Interrupt 
-	__CAN_IRQ_ERR=			BIT(2),					// Error Interrupt 
-	__CAN_IRQ_DATA_OVERRUN=	BIT(3),					// Date Overrun Interrupt 
-	__CAN_IRQ_WAKEUP=		BIT(4),					// Wakeup Interrupt 
-	__CAN_IRQ_ERR_PASSIVE=	BIT(5),					// Passive Error Interrupt 
-	__CAN_IRQ_ARB_LOST=		BIT(6),					// Arbitration lost interrupt 
-	__CAN_IRQ_BUS_ERR=		BIT(7),					// Bus error Interrupt 
-} __CAN_IRQ_t;
+	LWCAN_IRQ_RX=			BIT(0),					// RX Interrupt 
+	LWCAN_IRQ_TX=			BIT(1),					// TX Interrupt 
+	LWCAN_IRQ_ERR=			BIT(2),					// Error Interrupt 
+	LWCAN_IRQ_DATA_OVERRUN=	BIT(3),					// Date Overrun Interrupt 
+	LWCAN_IRQ_WAKEUP=		BIT(4),					// Wakeup Interrupt 
+	LWCAN_IRQ_ERR_PASSIVE=	BIT(5),					// Passive Error Interrupt 
+	LWCAN_IRQ_ARB_LOST=		BIT(6),					// Arbitration lost interrupt 
+	LWCAN_IRQ_BUS_ERR=		BIT(7),					// Bus error Interrupt 
+} lw_can_irq_t;
 
 typedef enum  
 {
-	__CAN_OC_BOM=			0b00,					// bi-phase output mode 
-	__CAN_OC_TOM=			0b01,					// test output mode 
-	__CAN_OC_NOM=			0b10,					// normal output mode 
-	__CAN_OC_COM=			0b11,					// clock output mode 
-} __CAN_OCMODE_t;
+	LWCAN_OC_BOM=			0b00,					// bi-phase output mode 
+	LWCAN_OC_TOM=			0b01,					// test output mode 
+	LWCAN_OC_NOM=			0b10,					// normal output mode 
+	LWCAN_OC_COM=			0b11,					// clock output mode 
+} lw_can_ocmode_t;
 
 typedef struct 
 {
