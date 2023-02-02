@@ -551,11 +551,11 @@ bool lw_can_set_filter(uint32_t messageId)
 
 uint32_t lw_can_get_wd_hits()
 {
-	uint32_t wdHits;
+	uint32_t wd_hit_cnt;
 	LWCAN_ENTER_CRITICAL();
-	wdHits = pDriverObj != NULL ? pDriverObj->wd_hit_cnt : 0;
+	wd_hit_cnt = pDriverObj != NULL ? pDriverObj->wd_hit_cnt : 0;
 	LWCAN_EXIT_CRITICAL();
-	return wdHits;
+	return wd_hit_cnt;
 }
 
 uint32_t lw_can_get_arb_lost_cnt()
