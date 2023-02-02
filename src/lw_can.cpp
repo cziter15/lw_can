@@ -180,7 +180,7 @@ bool impl_write_frame_phy(const CAN_frame_t *p_frame)
 	return false;
 }
 
-bool impl_lw_can_start()
+bool impl_lw_can_start(bool resetCounters)
 {
 	if (pDriverObj && !pDriverObj->isStarted)
 	{
@@ -284,7 +284,8 @@ bool impl_lw_can_start()
 		esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, NULL, &pDriverObj->intrHandle);
 
 		// Reset counters
-		pdo_reset_bus_counters(pDriverObj);
+		if (resetCounters)
+			pdo_reset_bus_counters(pDriverObj);
 
 		// Set state.
 		pDriverObj->isStarted = true;
@@ -302,11 +303,11 @@ bool impl_lw_can_stop()
 {
 	if (pDriverObj && pDriverObj->isStarted)
 	{
+		MODULE_CAN->MOD.B.RM = 0;
 		esp_intr_free(pDriverObj->intrHandle);
 		vSemaphoreDelete(pDriverObj->txComplete);
 		pDriverObj->needReset = false;
 		pDriverObj->isStarted = false;
-		MODULE_CAN->MOD.B.RM = 0;
 		return true;
 	}
 
@@ -468,7 +469,7 @@ void lw_can_watchdog(void *pvParameters)
 		if (pDriverObj && pDriverObj->isStarted && pDriverObj->needReset)
 		{
 			impl_lw_can_stop();
-			impl_lw_can_start();
+			impl_lw_can_start(false);
 			pDriverObj->wd_hit_cnt++;
 		}
 		LWCAN_EXIT_CRITICAL();
@@ -501,7 +502,7 @@ bool lw_can_start()
 {
 	bool driverStarted;
 	LWCAN_ENTER_CRITICAL();
-	driverStarted = impl_lw_can_start();
+	driverStarted = impl_lw_can_start(true);
 	LWCAN_EXIT_CRITICAL();
 	return driverStarted;
 }
