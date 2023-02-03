@@ -530,7 +530,6 @@ bool lw_can_stop()
 bool lw_can_transmit(const lw_can_frame_t& frame)
 {
 	bool frameSent = false;
-	SemaphoreHandle_t txSemaphore;
 	LWCAN_ENTER_CRITICAL();
 	if (pCanDriverObj && pCanDriverObj->isStarted)
 	{
