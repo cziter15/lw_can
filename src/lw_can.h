@@ -137,3 +137,10 @@ extern uint32_t lw_can_get_err_passive_cnt();
 	@return Count of bus error ocurrences.
 */
 extern uint32_t lw_can_get_bus_error_cnt();
+
+/*
+	This function return the counter of interrupts.
+
+	@return Count of interrupts.
+*/
+extern uint32_t lw_can_get_total_int_cnt();

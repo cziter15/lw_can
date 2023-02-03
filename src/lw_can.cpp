@@ -103,6 +103,7 @@ typedef struct
 	uint32_t wake_up_cnt;									// Wake up counter.
 	uint32_t err_passive_cnt;								// Error passive counter.
 	uint32_t bus_error_cnt;									// Bus error counter.
+	uint32_t total_int_cnt;									// Total interrupt counter.
 
 	bool isStarted;											// Flag to indicate if CAN driver is started.
 	bool needReset;											// Flag to indicate if need to reset CAN peripheral.
@@ -115,6 +116,7 @@ inline void pdo_reset_bus_counters(lw_can_driver_obj_t* pdo)
 	pdo->data_overrun_cnt = 0;
 	pdo->err_passive_cnt = 0;
 	pdo->wake_up_cnt = 0;
+	pdo->total_int_cnt = 0;
 }
 
 inline void pdo_reset_filter(lw_can_driver_obj_t * pdo)
@@ -196,64 +198,62 @@ bool impl_lw_can_start(bool resetCounters)
 		// Time quantum
 		double quanta;
 
-		// enable module
+		//enable module
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
-		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 
-		// disable all interrupt sources
-		MODULE_CAN->IER.U = 0; 
+		MODULE_CAN->MOD.B.RM = 1; //first thing once module is enabled at hardware level is to make sure it is in reset
 
-		// configure TX pin
-		gpio_set_level(pCanDriverObj->txPin, 0);
-		gpio_set_direction(pCanDriverObj->txPin, GPIO_MODE_OUTPUT);
-		gpio_matrix_out(pCanDriverObj->txPin, CAN_TX_IDX, 0, 0);
+		//configure TX pin
+		gpio_set_level(pCanDriverObj->txPin, 1);
+		gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
+		gpio_matrix_out(pCanDriverObj->txPin,CAN_TX_IDX,0,0);
 		gpio_pad_select_gpio(pCanDriverObj->txPin);
 
-		// configure RX pin
-		gpio_set_direction(pCanDriverObj->rxPin, GPIO_MODE_INPUT);
-		gpio_matrix_in(pCanDriverObj->rxPin, CAN_RX_IDX, 0);
+		//configure RX pin
+		gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
+		gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
 		gpio_pad_select_gpio(pCanDriverObj->rxPin);
 
-		// set to PELICAN mode
+		//set to PELICAN mode
 		MODULE_CAN->CDR.B.CAN_M = 0x1;
 
-		// synchronization jump width is the same for all baud rates
+		MODULE_CAN->IER.U = 0; //disable all interrupt sources until we're ready
+		//clear interrupt flags
+		(void)MODULE_CAN->IR.U;
+		
+		//synchronization jump width is the same for all baud rates
 		MODULE_CAN->BTR0.B.SJW = 0x1;
 
-		// TSEG2 is the same for all baud rates
+		//TSEG2 is the same for all baud rates
 		MODULE_CAN->BTR1.B.TSEG2 = 0x1;
 
-		// select time quantum and set TSEG1
-		switch (pCanDriverObj->speedKbps) 
+		//select time quantum and set TSEG1
+		switch(pCanDriverObj->speedKbps)
 		{
-			// 1000 kbps
 			case 1000:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x4;
 				quanta = 0.125;
-			break;
+				break;
 
-			// 8000 kbps
 			case 800:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x6;
 				quanta = 0.125;
-			break;
-
-			/// 200 kbps
-			case 200:
-				MODULE_CAN->BTR1.B.TSEG1 = 0xc;
-				MODULE_CAN->BTR1.B.TSEG2 = 0x5;
-				quanta = 0.25;
-			break;
-
-			/// all other baud rates
+				break;
+			case 33:
+				//changes everything...
+				MODULE_CAN->BTR1.B.TSEG2 = 0x6;
+				MODULE_CAN->BTR1.B.TSEG1 = 0xf; //16 + 1 + 7 = 24
+				quanta = ((float)1000.0f / 33.3f) / 24.0f;
+				break;
 			default:
 				MODULE_CAN->BTR1.B.TSEG1 = 0xc;
-				quanta = ((float) 1000 / pCanDriverObj->speedKbps) / 16;
+				quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
 		}
 
-		// Calculate and set baud rate prescaler.
-		MODULE_CAN->BTR0.B.BRP = (uint8_t) round((((APB_CLK_FREQ * quanta) / 2) - 1) / 1000000) - 1;
+		//set baud rate prescaler
+		//APB_CLK_FREQ should be 80M
+		MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
 
 		/* Set sampling
 		* 1 -> triple; the bus is sampled three times; recommended for low/medium speed buses     (class A and B) where
@@ -426,6 +426,9 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	BaseType_t higherPriorityTaskWoken = pdFALSE;
 	interrupt = MODULE_CAN->IR.U;
 
+	// Increase interrupt counter.
+	++pCanDriverObj->total_int_cnt;
+
 	// Handle counters.
 	if ((interrupt & LWCAN_IRQ_ARB_LOST) != 0)
 		++pCanDriverObj->arb_lost_cnt;
@@ -442,15 +445,6 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	if ((interrupt & LWCAN_IRQ_BUS_ERR) != 0)
 		++pCanDriverObj->bus_error_cnt;
 
-	// Handle RX frame available interrupt
-	if ((interrupt & LWCAN_IRQ_RX) != 0)
-	{
-		for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
-		{
-			impl_lw_read_frame_phy();
-		}
-	}
-
 	// Handle TX complete interrupt
 	if ((interrupt & LWCAN_IRQ_TX) != 0)
 		xSemaphoreGiveFromISR(pCanDriverObj->txComplete, &higherPriorityTaskWoken);
@@ -464,6 +458,15 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 					)) != 0) 
 	{
 		pCanDriverObj->needReset = true;
+	}
+
+	// Handle RX frame available interrupt
+	if ((interrupt & LWCAN_IRQ_RX) != 0)
+	{
+		for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
+		{
+			impl_lw_read_frame_phy();
+		}
 	}
 
 	LWCAN_EXIT_CRITICAL_ISR();
@@ -614,6 +617,14 @@ uint32_t lw_can_get_bus_error_cnt()
 	return bus_error_cnt;
 }
 
+uint32_t lw_can_get_total_int_cnt()
+{
+	uint32_t total_int_cnt;
+	LWCAN_ENTER_CRITICAL();
+	total_int_cnt = pCanDriverObj != NULL ? pCanDriverObj->total_int_cnt : 0;
+	LWCAN_EXIT_CRITICAL();
+	return total_int_cnt;
+}
 //===================================================================================================================
 // END PUBLIC API
 //===================================================================================================================
