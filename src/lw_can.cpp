@@ -92,7 +92,6 @@ typedef struct
 	QueueHandle_t rxQueue;									// CAN RX queue handle.
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
-	SemaphoreHandle_t txComplete;							// CAN TX complete semaphore.
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
 
@@ -166,29 +165,24 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	MODULE_CAN->CMR.B.RRB = 1;
 }
 
-bool impl_write_frame_phy(const lw_can_frame_t *p_frame) 
+void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t *p_frame) 
 {
-	if (MODULE_CAN->SR.B.TBS)
+	uint8_t thisByte;
+	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = p_frame->FIR.U;
+	if (p_frame->FIR.B.FF == CAN_frame_std) 
 	{
-		uint8_t thisByte;
-		MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = p_frame->FIR.U;
-		if (p_frame->FIR.B.FF == CAN_frame_std) 
-		{
-			LWCAN_SET_STD_ID(p_frame->MsgID);
-			for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; thisByte++)
-				MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte] = p_frame->data.u8[thisByte];
-		}
-		else 
-		{
-			LWCAN_SET_EXT_ID(p_frame->MsgID);
-			for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; thisByte++)
-				MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = p_frame->data.u8[thisByte];
-		}
-
-		MODULE_CAN->CMR.B.TR = 1;
-		return true;
+		LWCAN_SET_STD_ID(p_frame->MsgID);
+		for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; thisByte++)
+			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte] = p_frame->data.u8[thisByte];
 	}
-	return false;
+	else 
+	{
+		LWCAN_SET_EXT_ID(p_frame->MsgID);
+		for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; thisByte++)
+			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = p_frame->data.u8[thisByte];
+	}
+
+	MODULE_CAN->CMR.B.TR = 1;
 }
 
 bool impl_lw_can_start(bool resetCounters)
@@ -286,9 +280,6 @@ bool impl_lw_can_start(bool resetCounters)
 		// Clear interrupt flags
 		(void) MODULE_CAN->IR.U;
 
-		// Allocate the tx complete semaphore.
-		pCanDriverObj->txComplete = xSemaphoreCreateBinary();
-
 		// Allocate queues.
 		pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 		pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
@@ -328,9 +319,6 @@ bool impl_lw_can_stop()
 		// Delete queues.
 		vQueueDelete(pCanDriverObj->txQueue);
 		vQueueDelete(pCanDriverObj->rxQueue);
-		
-		// Delete semaphores.
-		vSemaphoreDelete(pCanDriverObj->txComplete);
 
 		// Clear state flags.
 		pCanDriverObj->needReset = false;
@@ -421,7 +409,7 @@ bool impl_lw_can_uninstall()
 void IRAM_ATTR lw_can_interrupt(void* arg)
 {
 	LWCAN_ENTER_CRITICAL_ISR();
-
+	lw_can_frame_t frame;
 	uint32_t interrupt;
 	BaseType_t higherPriorityTaskWoken = pdFALSE;
 	interrupt = MODULE_CAN->IR.U;
@@ -446,18 +434,13 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 		++pCanDriverObj->bus_error_cnt;
 
 	// Handle TX complete interrupt
-	if ((interrupt & LWCAN_IRQ_TX) != 0)
-		xSemaphoreGiveFromISR(pCanDriverObj->txComplete, &higherPriorityTaskWoken);
-
-	// Handle error interrupts.
-	if ((interrupt & (LWCAN_IRQ_ERR						//0x4
-					| LWCAN_IRQ_DATA_OVERRUN			//0x8
-					| LWCAN_IRQ_WAKEUP				//0x10
-					| LWCAN_IRQ_ERR_PASSIVE			//0x20
-					| LWCAN_IRQ_BUS_ERR				//0x80
-					)) != 0) 
+	if ((interrupt & LWCAN_IRQ_TX) != 0) 
 	{
-		pCanDriverObj->needReset = true;
+		if (uxQueueMessagesWaitingFromISR(pCanDriverObj->txQueue) > 0)
+		{
+			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, NULL);
+			impl_write_frame_phy(&frame);
+		}
 	}
 
 	// Handle RX frame available interrupt
@@ -469,6 +452,16 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 		}
 	}
 
+	// Handle error interrupts.
+	if ((interrupt & (LWCAN_IRQ_ERR				//0x4
+					| LWCAN_IRQ_DATA_OVERRUN	//0x8
+					| LWCAN_IRQ_WAKEUP			//0x10
+					| LWCAN_IRQ_ERR_PASSIVE		//0x20
+					| LWCAN_IRQ_BUS_ERR			//0x80
+	)) != 0)
+	{
+		pCanDriverObj->needReset = true;
+	}
 	LWCAN_EXIT_CRITICAL_ISR();
 
 	if (higherPriorityTaskWoken)
@@ -536,13 +529,23 @@ bool lw_can_stop()
 
 bool lw_can_transmit(const lw_can_frame_t& frame)
 {
-	bool frameSent;
+	bool frameSent = false;
 	SemaphoreHandle_t txSemaphore;
 	LWCAN_ENTER_CRITICAL();
-	txSemaphore = pCanDriverObj->txComplete;
-	frameSent = pCanDriverObj->isStarted && impl_write_frame_phy(&frame);
+	if (pCanDriverObj && pCanDriverObj->isStarted)
+	{
+		if (!(MODULE_CAN->SR.B.TBS))
+		{
+			frameSent = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
+		}
+		else
+		{
+			impl_write_frame_phy(&frame);
+			frameSent = true;
+		}
+	}
 	LWCAN_EXIT_CRITICAL();
-	return frameSent && xSemaphoreTake(txSemaphore, 100);
+	return frameSent;
 }
 
 bool lw_can_read_next_frame(lw_can_frame_t& outFrame)
