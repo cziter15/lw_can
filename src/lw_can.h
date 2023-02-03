@@ -144,3 +144,17 @@ extern uint32_t lw_can_get_bus_error_cnt();
 	@return Count of interrupts.
 */
 extern uint32_t lw_can_get_total_int_cnt();
+
+/*
+	This function return the number of messages waiting to be transmitted.
+up
+	@return Count of messages to be received.
+*/
+extern uint32_t lw_can_get_msgs_to_rx();
+
+/*
+	This function return the number of messages to be transmitted.
+
+	@return Count of messages to be transmitted..
+*/
+extern uint32_t lw_can_get_msgs_to_tx();
