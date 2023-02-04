@@ -451,7 +451,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	// Handle TX complete interrupt (incl. errata fix)
 	if (((interrupt & LWCAN_IRQ_TX) || pCanDriverObj->state.txOccupied) && MODULE_CAN->SR.B.TBS) 
 	{
-		if (uxQueueMessagesWaitingFromISR(pCanDriverObj->txQueue) > 0)
+		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
 		{
 			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, NULL);
 			impl_write_frame_phy(&frame);
@@ -465,7 +465,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	// Handle RX frame available interrupt
 	if (interrupt & LWCAN_IRQ_RX)
 	{
-		for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
+		for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++)
 		{
 			impl_lw_read_frame_phy();
 		}
