@@ -95,7 +95,7 @@ typedef struct
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
 
-	uint8_t ocMode;
+	uint8_t ocMode;											// CAN output control mode.
 
 	uint32_t wd_hit_cnt;									// Watchdog hit counter.
 
