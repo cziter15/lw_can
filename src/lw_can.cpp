@@ -163,7 +163,7 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	}
 
 	xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
-	MODULE_CAN->CMR.B.RRB = 1;
+	MODULE_CAN->CMR.B.RRB = 0x1;
 }
 
 void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t *p_frame) 
@@ -183,7 +183,7 @@ void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t *p_frame)
 			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = p_frame->data.u8[thisByte];
 	}
 
-	MODULE_CAN->CMR.B.TR = 1;
+	MODULE_CAN->CMR.B.TR = 0x1;
 }
 
 bool impl_lw_can_start(bool resetCounters)
@@ -197,7 +197,7 @@ bool impl_lw_can_start(bool resetCounters)
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 
-		MODULE_CAN->MOD.B.RM = 1; //first thing once module is enabled at hardware level is to make sure it is in reset
+		MODULE_CAN->MOD.B.RM = 0x1; //first thing once module is enabled at hardware level is to make sure it is in reset
 
 		//configure TX pin
 		gpio_set_level(pCanDriverObj->txPin, 1);
@@ -309,7 +309,7 @@ bool impl_lw_can_stop()
 	if (pCanDriverObj && pCanDriverObj->isStarted)
 	{
 		// Reset the module.
-		MODULE_CAN->MOD.B.RM = 1;
+		MODULE_CAN->MOD.B.RM = 0x1;
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 		MODULE_CAN->IER.U = 0;
