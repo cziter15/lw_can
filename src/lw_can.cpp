@@ -121,7 +121,7 @@ inline void pdo_reset_bus_counters(lw_can_driver_obj_t* pdo)
 
 inline void pdo_reset_filter(lw_can_driver_obj_t * pdo)
 {
-	pdo->filter.FM = lw_can_filter_mode_t::Dual;
+	pdo->filter.FM = LWCAN_FILTER_DUAL;
 	pdo->filter.AM.U = 0;
 	pdo->filter.AC.U = 0xFFFFFFFF;
 }
@@ -145,7 +145,7 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 
 	frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
 
-	if(frame.FIR.B.FF == CAN_frame_std)
+	if(frame.FIR.B.FF == LWCAN_FRAME_STD)
 	{
 		frame.MsgID = LWCAN_GET_STD_ID;
 		for(thisByte = 0; thisByte < frame.FIR.B.DLC; thisByte++)
@@ -170,7 +170,7 @@ void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t *p_frame)
 {
 	uint8_t thisByte;
 	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = p_frame->FIR.U;
-	if (p_frame->FIR.B.FF == CAN_frame_std) 
+	if (p_frame->FIR.B.FF == LWCAN_FRAME_STD) 
 	{
 		LWCAN_SET_STD_ID(p_frame->MsgID);
 		for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; thisByte++)
@@ -335,7 +335,7 @@ bool impl_lw_can_set_filter(uint32_t messageId)
 {
 	if (pCanDriverObj != NULL && !pCanDriverObj->isStarted)
 	{
-		pCanDriverObj->filter.FM = lw_can_filter_mode_t::Single;
+		pCanDriverObj->filter.FM = LWCAN_FILTER_SINGLE;
 		pCanDriverObj->filter.AC.U = __bswap32(messageId);
 		pCanDriverObj->filter.AM.U = 0xFFFFFFFF;
 		return true;

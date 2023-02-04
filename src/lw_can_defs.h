@@ -35,14 +35,14 @@
 
 typedef enum 
 {
-	CAN_frame_std=0, 								// Standard frame, using 11 bit identifer. 
-	CAN_frame_ext=1 								// Extended frame, using 29 bit identifer. 
+	LWCAN_FRAME_STD = 0, 							// Standard frame, using 11 bit identifer. 
+	LWCAN_FRAME_EXT= 1 								// Extended frame, using 29 bit identifer. 
 } lw_can_frame_format_t;
 
 typedef enum 
 {
-	CAN_no_RTR=0, 									// No RTR frame. 
-	CAN_RTR=1 										// RTR frame. 
+	LWCAN_NO_RTR = 0, 								// No RTR frame. 
+	LWCAN_RTR 	 = 1 								// RTR frame. 
 } lw_can_rtr_t;
 
 typedef union
@@ -72,8 +72,8 @@ typedef struct
 
 typedef enum 
 {
-	Dual=0, 										// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
-	Single=1 										// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
+	LWCAN_FILTER_DUAL = 0, 										// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
+	LWCAN_FILTER_SINGLE = 1 										// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
 } lw_can_filter_mode_t;
 
 typedef struct 
@@ -122,10 +122,10 @@ typedef enum
 
 typedef enum  
 {
-	LWCAN_OC_BOM =			0b00,					// bi-phase output mode 
-	LWCAN_OC_TOM =			0b01,					// test output mode 
-	LWCAN_OC_NOM =			0b10,					// normal output mode 
-	LWCAN_OC_COM =			0b11,					// clock output mode 
+	LWCAN_OC_BOM =				0b00,				// bi-phase output mode 
+	LWCAN_OC_TOM =				0b01,				// test output mode 
+	LWCAN_OC_NOM =				0b10,				// normal output mode 
+	LWCAN_OC_COM =				0b11,				// clock output mode 
 } lw_can_ocmode_t;
 
 typedef struct 
