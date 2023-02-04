@@ -44,7 +44,7 @@
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30);
+extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t ocMode = LWCAN_OC_NOM);
 
 /*
 	This function is used to set CAN bus filter for incomming message.

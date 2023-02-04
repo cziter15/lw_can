@@ -95,6 +95,8 @@ typedef struct
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
 
+	uint8_t ocMode;
+
 	uint32_t wd_hit_cnt;									// Watchdog hit counter.
 
 	uint32_t arb_lost_cnt;									// Arbitration lost counter.
@@ -271,7 +273,7 @@ bool impl_lw_can_start(bool resetCounters)
 		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pCanDriverObj->filter.AM.B.R3;
 
 		// Set to normal mode
-		MODULE_CAN->OCR.B.OCMODE = LWCAN_OC_NOM;
+		MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
 
 		// Clear error counters
 		MODULE_CAN->TXERR.U = 0;
@@ -343,7 +345,7 @@ bool impl_lw_can_set_filter(uint32_t messageId)
 	return false;
 }
 
-bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize)
+bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
 {
 	if (pCanDriverObj == NULL)
 	{
@@ -355,6 +357,9 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 
 		// Setup speed.
 		pCanDriverObj->speedKbps = speedKbps;
+
+		// Setup OC mode.
+		pCanDriverObj->ocMode = ocMode;
 
 		// Copy queue sizes.
 		pCanDriverObj->rxQueueSize = rxQueueSize;
@@ -497,11 +502,11 @@ void lw_can_watchdog(void* param)
 // PUBLIC API
 // Remember to use spinlock properly.
 //===================================================================================================================
-bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize)
+bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
 {
 	bool driverInstalled;
 	LWCAN_ENTER_CRITICAL();
-	driverInstalled = impl_lw_can_install(rxPin, txPin, speedKbps, rxQueueSize, txQueueSize);
+	driverInstalled = impl_lw_can_install(rxPin, txPin, speedKbps, rxQueueSize, txQueueSize, ocMode);
 	LWCAN_EXIT_CRITICAL();
 	return driverInstalled;
 }
