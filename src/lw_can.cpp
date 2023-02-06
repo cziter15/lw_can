@@ -507,20 +507,24 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 void lw_can_watchdog(void* param)
 {
 	const TickType_t xDelay = 50 / portTICK_PERIOD_MS;
-	bool doReset = false;
+
 	while (true)
 	{
 		vTaskDelay( xDelay );
 
 		LWCAN_ENTER_CRITICAL();
 		if (pCanDriverObj && pCanDriverObj->state.isStarted && pCanDriverObj->state.needReset)
-		{
+		{	
+			// Do CAN peripheral reset.
 			pCanDriverObj->state.isDuringReset = true;
 			impl_lw_can_stop();
 			impl_lw_can_start();
-			++pCanDriverObj->wd_hit_cnt;
 			pCanDriverObj->state.isDuringReset = false;
 
+			// Increment watchdog counter.
+			++pCanDriverObj->wd_hit_cnt;
+
+			// If we reset due to errata workaround, then send pedning frame.
 			if (pCanDriverObj->state.needResendFrame)
 			{
 				pCanDriverObj->state.needResendFrame = false;
