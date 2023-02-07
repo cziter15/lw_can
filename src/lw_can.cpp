@@ -133,27 +133,33 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
 
+	// Copy FIR.
 	frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
 
-	if(frame.FIR.B.FF == LWCAN_FRAME_STD)
-	{
-		frame.MsgID = LWCAN_GET_STD_ID;
-		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-		{
-			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
-		}
-	}
-	else
-	{
-		frame.MsgID = LWCAN_GET_EXT_ID;
-		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-		{
-			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
-		}
-	}
+	// Copy frame ID depedning on framer type
+	frame.MsgID = frame.FIR.B.FF == LWCAN_FRAME_STD ? LWCAN_GET_STD_ID : LWCAN_GET_EXT_ID;
 
+	// Check frame filtering and copy bytes if match.
 	if ((frame.MsgID & pCanDriverObj->filter.mask) == pCanDriverObj->filter.id)
-			xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
+	{
+		if(frame.FIR.B.FF == LWCAN_FRAME_STD)
+		{
+			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			{
+				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
+			}
+		}
+		else
+		{
+			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			{
+				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
+			}
+		}
+		
+		// Send to RX queue.
+		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
+	}
 
 	MODULE_CAN->CMR.B.RRB = 0x1;
 }
@@ -182,41 +188,43 @@ bool impl_lw_can_start()
 {
 	if (pCanDriverObj && !pCanDriverObj->state.isStarted)
 	{
-		// Time quantum
+		// Time quanta
 		double quanta;
 
-		//enable module
+		// Enable module
 		DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 		DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 
-		//first thing once module is enabled at hardware level is to make sure it is in reset
+		// First thing once module is enabled at hardware level is to make sure it is in reset
 		MODULE_CAN->MOD.B.RM = 0x1; 
 
-		//configure TX pin
+		// Configure TX pin
 		gpio_set_level(pCanDriverObj->txPin, 1);
 		gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
 		gpio_matrix_out(pCanDriverObj->txPin,CAN_TX_IDX,0,0);
 		gpio_pad_select_gpio(pCanDriverObj->txPin);
 
-		//configure RX pin
+		// Configure RX pin
 		gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
 		gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
 		gpio_pad_select_gpio(pCanDriverObj->rxPin);
 
-		//set to PELICAN mode
+		// Set to PELICAN mode
 		MODULE_CAN->CDR.B.CAN_M = 0x1;
 
-		MODULE_CAN->IER.U = 0; //disable all interrupt sources until we're ready
-		//clear interrupt flags
+ 		// Disable all interrupt sources until we're ready
+		MODULE_CAN->IER.U = 0;
+
+		// Clear interrupt flags
 		(void)MODULE_CAN->IR.U;
 		
-		//synchronization jump width is the same for all baud rates
+		// Synchronization jump width is the same for all baud rates
 		MODULE_CAN->BTR0.B.SJW = 0x1;
 
-		//TSEG2 is the same for all baud rates
+		// TSEG2 is the same for all baud rates
 		MODULE_CAN->BTR1.B.TSEG2 = 0x1;
 
-		//select time quantum and set TSEG1
+		// Select time quantum and set TSEG1
 		switch(pCanDriverObj->speedKbps)
 		{
 			case 1000:
@@ -239,8 +247,8 @@ bool impl_lw_can_start()
 				quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
 		}
 
-		//set baud rate prescaler
-		//APB_CLK_FREQ should be 80M
+		// Set baud rate prescaler
+		// APB_CLK_FREQ should be 80M
 		MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
 
 		/* Set sampling
@@ -249,7 +257,7 @@ bool impl_lw_can_start()
 		* buses (SAE class C)*/
 		MODULE_CAN->BTR1.B.SAM = 0x1;
 
-		//enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
+		// enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
 		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 		// Set acceptance filter.
