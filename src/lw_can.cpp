@@ -53,8 +53,8 @@ static portMUX_TYPE globalCanSpinLock 	=	 portMUX_INITIALIZER_UNLOCKED;
 //===================================================================================================================
 typedef struct 
 {
-	uint32_t mask;
 	uint32_t id;
+	uint32_t mask;
 } lw_can_filter_t;
 
 typedef struct 
@@ -152,8 +152,8 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 		}
 	}
 
-	if ((pCanDriverObj->filter.mask & frame.MsgID) == pCanDriverObj->filter.id)
-		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
+	if ((frame.MsgID & pCanDriverObj->filter.mask) == pCanDriverObj->filter.id)
+			xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 
 	MODULE_CAN->CMR.B.RRB = 0x1;
 }
@@ -252,8 +252,8 @@ bool impl_lw_can_start()
 		//enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
 		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
-		// Set acceptance filter	
-		MODULE_CAN->MOD.B.AFM = 0;	
+		// Set acceptance filter.
+		MODULE_CAN->MOD.B.AFM = 0;
 		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xff;
 		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0xff;
 		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0xff;
@@ -329,12 +329,12 @@ bool impl_lw_can_stop()
 	return false;
 }
 
-bool impl_lw_can_set_filter(uint32_t matchId, uint32_t mask)
+bool impl_lw_can_set_filter(uint32_t id, uint32_t mask)
 {
 	if (pCanDriverObj != NULL && !pCanDriverObj->state.isStarted)
 	{
-		pCanDriverObj->filter.id = matchId;
 		pCanDriverObj->filter.mask = mask;
+		pCanDriverObj->filter.id = id;
 		return true;
 	}
 	return false;
@@ -594,11 +594,11 @@ bool lw_can_read_next_frame(lw_can_frame_t& outFrame)
 	return rxQueue != NULL && xQueueReceive(rxQueue, &outFrame, 0) == pdTRUE;
 }
 
-bool lw_can_set_filter(uint32_t matchId, uint32_t mask)
+bool lw_can_set_filter(uint32_t id, uint32_t mask)
 {
 	bool filterSetStatus;
 	LWCAN_ENTER_CRITICAL();
-	filterSetStatus = impl_lw_can_set_filter(matchId, mask);
+	filterSetStatus = impl_lw_can_set_filter(id, mask);
 	LWCAN_EXIT_CRITICAL();
 	return filterSetStatus;
 }

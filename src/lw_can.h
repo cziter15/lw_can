@@ -50,11 +50,12 @@ extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbp
 	This function is used to set CAN bus filter for incomming message.
 	Must be called after install and before start.
 
-	@param matchId CAN mmatching ID.
+	@param id CAN matching ID.
+	@param mask CAN matching mask.
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_set_filter(uint32_t matchId, uint32_t mask = 0xFFFFFFFF);
+extern bool lw_can_set_filter(uint32_t id, uint32_t mask = 0xFFFFFFFF);
 
 /*
 	This function is used to uninstall the CAN bus driver.
