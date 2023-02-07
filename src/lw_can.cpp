@@ -527,6 +527,7 @@ void lw_can_watchdog(void* param)
 			// If we reset due to errata workaround, then send pedning frame.
 			if (pCanDriverObj->state.needResendFrame)
 			{
+				pCanDriverObj->state.txOccupied = true;
 				pCanDriverObj->state.needResendFrame = false;
 				impl_write_frame_phy(&pCanDriverObj->saved_frame);
 				++pCanDriverObj->errata_resend_frame_cnt;
