@@ -133,29 +133,27 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
 
-	if ((pCanDriverObj->filter.mask & frame.MsgID) == pCanDriverObj->filter.id)
-	{
-		frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
+	frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
 
-		if(frame.FIR.B.FF == LWCAN_FRAME_STD)
+	if(frame.FIR.B.FF == LWCAN_FRAME_STD)
+	{
+		frame.MsgID = LWCAN_GET_STD_ID;
+		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
 		{
-			frame.MsgID = LWCAN_GET_STD_ID;
-			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-			{
-				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
-			}
+			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
 		}
-		else
-		{
-			frame.MsgID = LWCAN_GET_EXT_ID;
-			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-			{
-				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
-			}
-		}
-	
-		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 	}
+	else
+	{
+		frame.MsgID = LWCAN_GET_EXT_ID;
+		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+		{
+			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
+		}
+	}
+
+	if ((pCanDriverObj->filter.mask & frame.MsgID) == pCanDriverObj->filter.id)
+		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 
 	MODULE_CAN->CMR.B.RRB = 0x1;
 }
