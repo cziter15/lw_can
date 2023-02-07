@@ -507,13 +507,14 @@ void lw_can_watchdog(void* param)
 {
 	const TickType_t watchdogSmallDelay = pdMS_TO_TICKS(50);
 	const TickType_t watchdogCoooldownDelay = pdMS_TO_TICKS(5000);
-
+	
 	while (true)
 	{
+		bool wdtTriggered = false;
+
 		// Delay for a while.
 		vTaskDelay(watchdogSmallDelay);
 
-		bool wdtTriggered{false};
 		LWCAN_ENTER_CRITICAL();
 		if (pCanDriverObj && pCanDriverObj->state.isStarted && pCanDriverObj->state.needReset)
 		{	
