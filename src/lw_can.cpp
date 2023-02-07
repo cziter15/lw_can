@@ -294,22 +294,19 @@ bool impl_lw_can_start()
 		// Clear interrupt flags
 		(void) MODULE_CAN->IR.U;
 
-		// Allocate queues.
 		if (!pCanDriverObj->state.isDuringReset)
 		{
+			// Allocate queues.
+
 			pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 			pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
-		}
-	
-		if (!pCanDriverObj->state.isDuringReset)
-		{
+
 			// Reset counters.
 			pdo_reset_bus_counters(pCanDriverObj);
 			
 			// Install CAN interrupt service.
 			esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, NULL, &pCanDriverObj->intrHandle);
 		}
-
 
 		// Set state.
 		pCanDriverObj->state.isStarted = true;
