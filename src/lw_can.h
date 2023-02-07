@@ -50,8 +50,11 @@ extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbp
 	This function is used to set CAN bus filter for incomming message.
 	Must be called after install and before start.
 
-	@param id CAN matching ID.
-	@param mask CAN matching mask.
+	ISR will check it like this by
+		(recvID & mask) == id
+
+	@param id Frame ID.
+	@param mask Frame ID mask.
 
 	@return true on success, false on failure.
 */

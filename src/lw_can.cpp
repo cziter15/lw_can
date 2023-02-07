@@ -116,16 +116,16 @@ inline void pdo_reset_filter(lw_can_driver_obj_t * pdo)
 	pdo->filter.id = 0;
 }
 
-static lw_can_driver_obj_t* pCanDriverObj = NULL; 			// Driver object pointer
+static lw_can_driver_obj_t* pCanDriverObj = NULL; 			// Driver object pointer.
 
 //===================================================================================================================
-// Required forward declarations
+// Required forward declarations.
 //===================================================================================================================
 void IRAM_ATTR lw_can_interrupt(void *arg);
 void lw_can_watchdog(void *param);
 
 //===================================================================================================================
-// Spinlock free functions
+// Spinlock free functions.
 //===================================================================================================================
 void IRAM_ATTR impl_lw_read_frame_phy()
 {
@@ -136,7 +136,7 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	// Copy FIR.
 	frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
 
-	// Copy frame ID depedning on framer type
+	// Set frame ID depedning on framer type.
 	frame.MsgID = frame.FIR.B.FF == LWCAN_FRAME_STD ? LWCAN_GET_STD_ID : LWCAN_GET_EXT_ID;
 
 	// Check frame filtering and copy bytes if match.
@@ -247,17 +247,20 @@ bool impl_lw_can_start()
 				quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
 		}
 
-		// Set baud rate prescaler
-		// APB_CLK_FREQ should be 80M
+		// Set baud rate prescaler - APB_CLK_FREQ should be 80M.
 		MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
 
-		/* Set sampling
-		* 1 -> triple; the bus is sampled three times; recommended for low/medium speed buses     (class A and B) where
-		* filtering spikes on the bus line is beneficial 0 -> single; the bus is sampled once; recommended for high speed
-		* buses (SAE class C)*/
+		/* 
+			Set sampling
+
+			1 -> triple; the bus is sampled three times; recommended for low/medium speed buses     
+			(class A and B) where filtering spikes on the bus line is beneficial 
+			
+			0 -> single; the bus is sampled once; recommended for high speed buses (SAE class C).
+		*/
 		MODULE_CAN->BTR1.B.SAM = 0x1;
 
-		// enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
+		// Enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!).
 		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 		// Set acceptance filter.
@@ -271,15 +274,15 @@ bool impl_lw_can_start()
 		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xff;
 		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
 
-		// Set to normal mode
+		// Set to normal mode.
 		MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
 
-		// Clear error counters
+		// Clear error counters.
 		MODULE_CAN->TXERR.U = 0;
 		MODULE_CAN->RXERR.U = 0;
 		(void) MODULE_CAN->ECC;
 
-		// Clear interrupt flags
+		// Clear interrupt flags.
 		(void) MODULE_CAN->IR.U;
 
 		if (!pCanDriverObj->state.isDuringReset)
@@ -447,7 +450,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->busErrorCnt;
 
-	// Handle TX complete interrupt (incl. errata fix)
+	// Handle TX complete interrupt (incl. errata fix).
 	if (((interrupt & LWCAN_IRQ_TX) || pCanDriverObj->state.txOccupied) && MODULE_CAN->SR.B.TBS) 
 	{
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
@@ -461,7 +464,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 		}
 	}
 
-	// Handle RX frame available interrupt
+	// Handle RX frame available interrupt.
 	if (interrupt & LWCAN_IRQ_RX)
 	{
 		for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
