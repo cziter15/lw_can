@@ -53,29 +53,8 @@ static portMUX_TYPE globalCanSpinLock 	=	 portMUX_INITIALIZER_UNLOCKED;
 //===================================================================================================================
 typedef struct 
 {
-	uint8_t	FM;												// Filter mode.
-	union
-	{
-		uint32_t U;
-		struct 
-		{
-			uint8_t R0;										// ACR0 register.
-			uint8_t R1;										// ACR1 register.
-			uint8_t R2;										// ACR2 register.
-			uint8_t R3;										// ACR3 register.
-		} B;
-	} AC ;
-	union
-	{
-		uint32_t U;
-		struct 
-		{
-			uint8_t R0;										// ACR0 register.
-			uint8_t R1;										// ACR1 register.
-			uint8_t R2;										// ACR2 register.
-			uint8_t R3;										// ACR3 register.
-		} B;
-	} AM;
+	uint32_t mask;
+	uint32_t id;
 } lw_can_filter_t;
 
 typedef struct 
@@ -133,9 +112,8 @@ inline void pdo_reset_bus_counters(lw_can_driver_obj_t* pdo)
 
 inline void pdo_reset_filter(lw_can_driver_obj_t * pdo)
 {
-	pdo->filter.FM = LWCAN_FILTER_DUAL;
-	pdo->filter.AM.U = 0;
-	pdo->filter.AC.U = 0xFFFFFFFF;
+	pdo->filter.mask = 0;
+	pdo->filter.id = 0;
 }
 
 static lw_can_driver_obj_t* pCanDriverObj = NULL; 			// Driver object pointer
@@ -155,26 +133,30 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
 
-	frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
-
-	if(frame.FIR.B.FF == LWCAN_FRAME_STD)
+	if ((pCanDriverObj->filter.mask & frame.MsgID) == pCanDriverObj->filter.id)
 	{
-		frame.MsgID = LWCAN_GET_STD_ID;
-		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+		frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
+
+		if(frame.FIR.B.FF == LWCAN_FRAME_STD)
 		{
-			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
+			frame.MsgID = LWCAN_GET_STD_ID;
+			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			{
+				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
+			}
 		}
-	}
-	else
-	{
-		frame.MsgID = LWCAN_GET_EXT_ID;
-		for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+		else
 		{
-			frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
+			frame.MsgID = LWCAN_GET_EXT_ID;
+			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			{
+				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
+			}
 		}
+	
+		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 	}
 
-	xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 	MODULE_CAN->CMR.B.RRB = 0x1;
 }
 
@@ -273,15 +255,15 @@ bool impl_lw_can_start()
 		MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 		// Set acceptance filter	
-		MODULE_CAN->MOD.B.AFM = pCanDriverObj->filter.FM;	
-		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = pCanDriverObj->filter.AC.B.R0;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = pCanDriverObj->filter.AC.B.R1;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = pCanDriverObj->filter.AC.B.R2;
-		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = pCanDriverObj->filter.AC.B.R3;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = pCanDriverObj->filter.AM.B.R0;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = pCanDriverObj->filter.AM.B.R1;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = pCanDriverObj->filter.AM.B.R2;
-		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = pCanDriverObj->filter.AM.B.R3;
+		MODULE_CAN->MOD.B.AFM = 0;	
+		MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.CODE[3] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[0] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[1] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xff;
+		MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
 
 		// Set to normal mode
 		MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
@@ -349,13 +331,12 @@ bool impl_lw_can_stop()
 	return false;
 }
 
-bool impl_lw_can_set_filter(uint32_t messageId)
+bool impl_lw_can_set_filter(uint32_t matchId, uint32_t mask)
 {
 	if (pCanDriverObj != NULL && !pCanDriverObj->state.isStarted)
 	{
-		pCanDriverObj->filter.FM = LWCAN_FILTER_SINGLE;
-		pCanDriverObj->filter.AC.U = __bswap32(messageId);
-		pCanDriverObj->filter.AM.U = 0xFFFFFFFF;
+		pCanDriverObj->filter.id = matchId;
+		pCanDriverObj->filter.mask = mask;
 		return true;
 	}
 	return false;
@@ -615,11 +596,11 @@ bool lw_can_read_next_frame(lw_can_frame_t& outFrame)
 	return rxQueue != NULL && xQueueReceive(rxQueue, &outFrame, 0) == pdTRUE;
 }
 
-bool lw_can_set_filter(uint32_t messageId)
+bool lw_can_set_filter(uint32_t matchId, uint32_t mask)
 {
 	bool filterSetStatus;
 	LWCAN_ENTER_CRITICAL();
-	filterSetStatus = impl_lw_can_set_filter(messageId);
+	filterSetStatus = impl_lw_can_set_filter(matchId, mask);
 	LWCAN_EXIT_CRITICAL();
 	return filterSetStatus;
 }
