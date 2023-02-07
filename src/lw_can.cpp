@@ -503,12 +503,15 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 
 void lw_can_watchdog(void* param)
 {
-	const TickType_t xDelay = 50 / portTICK_PERIOD_MS;
+	const TickType_t watchdogSmallDelay = pdMS_TO_TICKS(50);
+	const TickType_t watchdogCoooldownDelay = pdMS_TO_TICKS(5000);
 
 	while (true)
 	{
-		vTaskDelay( xDelay );
+		// Delay for a while.
+		vTaskDelay(watchdogSmallDelay);
 
+		bool wdtTriggered{false};
 		LWCAN_ENTER_CRITICAL();
 		if (pCanDriverObj && pCanDriverObj->state.isStarted && pCanDriverObj->state.needReset)
 		{	
@@ -529,8 +532,13 @@ void lw_can_watchdog(void* param)
 				impl_write_frame_phy(&pCanDriverObj->saved_frame);
 				++pCanDriverObj->errata_resend_frame_cnt;
 			}
+			wdtTriggered = true;
 		}
 		LWCAN_EXIT_CRITICAL();
+
+		// Wait some more time after reset sequence.
+		if (wdtTriggered)
+			vTaskDelay(watchdogCoooldownDelay);
 	}
 }
 
