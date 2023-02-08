@@ -162,3 +162,6 @@ extern uint32_t lw_can_get_msgs_to_rx();
 	@return Count of messages to be transmitted..
 */
 extern uint32_t lw_can_get_msgs_to_tx();
+
+extern uint32_t lw_can_get_errata_txQcopy();
+extern uint32_t lw_can_get_errata_rxQcopy();

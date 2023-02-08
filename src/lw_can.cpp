@@ -59,9 +59,9 @@ typedef struct
 
 typedef struct 
 {
-	bool isStarted : 1;										// Flag to indicate if CAN driver is started.
-	bool needReset : 1;										// Flag to indicate if need to reset CAN peripheral.
-	bool txOccupied : 1;									// Flag to indicate if CAN driver is transmitting.
+	bool isDriverStarted : 1;								// Flag to indicate if CAN driver is started.
+	bool needResetPeripheral : 1;							// Flag to indicate if need to reset CAN peripheral.
+	bool transmitInProgress : 1;							// Flag to indicate if CAN driver is transmitting.
 	bool needResendFrame : 1;								// Flag to indicate we need to resend frame.
 	bool isDuringReset : 1;									// Flag to indicate we are under reset.
 } lw_can_driver_state_t;
@@ -93,6 +93,9 @@ typedef struct
 	uint32_t errPassiveCnt;									// Error passive counter.
 	uint32_t busErrorCnt;									// Bus error counter.
 	uint32_t errataResendFrameCnt;							// RXFrame errata error counter.
+
+	uint32_t errata_txQcopy;							// RXFrame errata error counter.
+	uint32_t errata_rxQcopy;							// RXFrame errata error counter.
 
 	lw_can_driver_state_t state;							// Driver state.
 	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
@@ -164,29 +167,31 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	MODULE_CAN->CMR.B.RRB = 0x1;
 }
 
-void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t *p_frame) 
+void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t& frame) 
 {
 	uint8_t thisByte;
-	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = p_frame->FIR.U;
-	if (p_frame->FIR.B.FF == LWCAN_FRAME_STD) 
+	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = frame.FIR.U;
+	if (frame.FIR.B.FF == LWCAN_FRAME_STD) 
 	{
-		LWCAN_SET_STD_ID(p_frame->MsgID);
-		for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; ++thisByte)
-			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte] = p_frame->data.u8[thisByte];
+		LWCAN_SET_STD_ID(frame.MsgID);
+		for (thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte] = frame.data.u8[thisByte];
 	}
 	else 
 	{
-		LWCAN_SET_EXT_ID(p_frame->MsgID);
-		for (thisByte = 0; thisByte < p_frame->FIR.B.DLC; ++thisByte)
-			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = p_frame->data.u8[thisByte];
+		LWCAN_SET_EXT_ID(frame.MsgID);
+		for (thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = frame.data.u8[thisByte];
 	}
+
+	pCanDriverObj->savedFrame = frame;
 
 	MODULE_CAN->CMR.B.TR = 0x1;
 }
 
 bool impl_lw_can_start()
 {
-	if (pCanDriverObj && !pCanDriverObj->state.isStarted)
+	if (pCanDriverObj && !pCanDriverObj->state.isDriverStarted)
 	{
 		// Time quanta
 		double quanta;
@@ -299,7 +304,7 @@ bool impl_lw_can_start()
 		}
 
 		// Set state.
-		pCanDriverObj->state.isStarted = true;
+		pCanDriverObj->state.isDriverStarted = true;
 
 		// Showtime. Release Reset Mode.
 		MODULE_CAN->MOD.B.RM = 0;
@@ -312,7 +317,7 @@ bool impl_lw_can_start()
 
 bool impl_lw_can_stop()
 {
-	if (pCanDriverObj && pCanDriverObj->state.isStarted)
+	if (pCanDriverObj && pCanDriverObj->state.isDriverStarted)
 	{
 		// Reset the module.
 		MODULE_CAN->MOD.B.RM = 0x1;
@@ -331,8 +336,8 @@ bool impl_lw_can_stop()
 		}
 
 		// Clear state flags.
-		pCanDriverObj->state.needReset = false;
-		pCanDriverObj->state.isStarted = false;
+		pCanDriverObj->state.needResetPeripheral = false;
+		pCanDriverObj->state.isDriverStarted = false;
 
 		return true;
 	}
@@ -342,7 +347,7 @@ bool impl_lw_can_stop()
 
 bool impl_lw_can_set_filter(uint32_t id, uint32_t mask)
 {
-	if (pCanDriverObj != NULL && !pCanDriverObj->state.isStarted)
+	if (pCanDriverObj != NULL && !pCanDriverObj->state.isDriverStarted)
 	{
 		pCanDriverObj->filter.mask = mask;
 		pCanDriverObj->filter.id = id;
@@ -375,9 +380,9 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 		pCanDriverObj->wdHitCnt = 0;
 
 		// Setup states.
-		pCanDriverObj->state.isStarted = false;
-		pCanDriverObj->state.needReset = false;
-		pCanDriverObj->state.txOccupied = false;
+		pCanDriverObj->state.isDriverStarted = false;
+		pCanDriverObj->state.needResetPeripheral = false;
+		pCanDriverObj->state.transmitInProgress = false;
 
 		// Setup workaround flags.
 		pCanDriverObj->state.needResendFrame = false;
@@ -400,7 +405,7 @@ bool impl_lw_can_uninstall()
 	if (pCanDriverObj != NULL)
 	{
 		// Stop driver if working.
-		if (pCanDriverObj->state.isStarted)
+		if (pCanDriverObj->state.isDriverStarted)
 			impl_lw_can_stop();
 		
 		// Delete watchdog task.
@@ -450,20 +455,6 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->busErrorCnt;
 
-	// Handle TX complete interrupt (incl. errata fix).
-	if (((interrupt & LWCAN_IRQ_TX) || pCanDriverObj->state.txOccupied) && MODULE_CAN->SR.B.TBS) 
-	{
-		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
-		{
-			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, NULL);
-			impl_write_frame_phy(&frame);
-		}
-		else
-		{
-			pCanDriverObj->state.txOccupied = false;
-		}
-	}
-
 	// Handle RX frame available interrupt.
 	if (interrupt & LWCAN_IRQ_RX)
 	{
@@ -481,12 +472,26 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		pCanDriverObj->state.needReset = true;
+		pCanDriverObj->state.needResetPeripheral = true;
 
 		// We are sending, need to retry.
 		if ((interrupt & LWCAN_IRQ_BUS_ERR) && !MODULE_CAN->SR.B.TBS)
 			pCanDriverObj->state.needResendFrame = true;
 	}
+	// Handle TX complete interrupt (incl. errata fix).
+	else if (((interrupt & LWCAN_IRQ_TX) || pCanDriverObj->state.transmitInProgress) && MODULE_CAN->SR.B.TBS) 
+	{
+		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
+		{
+			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, NULL);
+			impl_write_frame_phy(frame);
+		}
+		else 
+		{
+			pCanDriverObj->state.transmitInProgress = false;
+		}
+	}
+
 	LWCAN_EXIT_CRITICAL_ISR();
 
 	if (higherPriorityTaskWoken)
@@ -503,7 +508,7 @@ void lw_can_watchdog(void* param)
 		vTaskDelay(watchdogSmallDelay);
 
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj && pCanDriverObj->state.isStarted && pCanDriverObj->state.needReset)
+		if (pCanDriverObj && pCanDriverObj->state.isDriverStarted && pCanDriverObj->state.needResetPeripheral)
 		{	
 			// Do CAN peripheral reset.
 			pCanDriverObj->state.isDuringReset = true;
@@ -517,9 +522,12 @@ void lw_can_watchdog(void* param)
 			// If we reset due to errata workaround, then send pedning frame.
 			if (pCanDriverObj->state.needResendFrame)
 			{
-				pCanDriverObj->state.txOccupied = true;
 				pCanDriverObj->state.needResendFrame = false;
-				impl_write_frame_phy(&pCanDriverObj->savedFrame);
+
+				pCanDriverObj->errata_rxQcopy = uxQueueMessagesWaiting(pCanDriverObj->rxQueue);
+				pCanDriverObj->errata_txQcopy = uxQueueMessagesWaiting(pCanDriverObj->txQueue);
+
+				impl_write_frame_phy(pCanDriverObj->savedFrame);
 				++pCanDriverObj->errataResendFrameCnt;
 			}
 		}
@@ -571,16 +579,16 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 {
 	bool frameQueued = false;
 	LWCAN_ENTER_CRITICAL();
-	if (pCanDriverObj && pCanDriverObj->state.isStarted)
+	if (pCanDriverObj && pCanDriverObj->state.isDriverStarted)
 	{
-		if (pCanDriverObj->state.txOccupied)
+		if (pCanDriverObj->state.transmitInProgress)
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
 		else
 		{
-			pCanDriverObj->state.txOccupied = true;
-			impl_write_frame_phy(&frame);
+			pCanDriverObj->state.transmitInProgress = true;
+			impl_write_frame_phy(frame);
 			frameQueued = true;
 		}
 	}
@@ -592,7 +600,7 @@ bool lw_can_read_next_frame(lw_can_frame_t& outFrame)
 {
 	QueueHandle_t rxQueue;
 	LWCAN_ENTER_CRITICAL();
-	rxQueue = (pCanDriverObj != NULL && pCanDriverObj->state.isStarted) ? pCanDriverObj->rxQueue : NULL;
+	rxQueue = (pCanDriverObj != NULL && pCanDriverObj->state.isDriverStarted) ? pCanDriverObj->rxQueue : NULL;
 	LWCAN_EXIT_CRITICAL();
 	return rxQueue != NULL && xQueueReceive(rxQueue, &outFrame, 0) == pdTRUE;
 }
@@ -686,6 +694,28 @@ uint32_t lw_can_get_msgs_to_tx()
 	LWCAN_EXIT_CRITICAL();
 	return msgsToTx;
 }
+
+
+uint32_t lw_can_get_errata_txQcopy()
+{
+	uint32_t errata_rxQcopy;
+	LWCAN_ENTER_CRITICAL();
+	errata_rxQcopy = pCanDriverObj != NULL ? pCanDriverObj->errata_txQcopy : 0;
+	LWCAN_EXIT_CRITICAL();
+	return errata_rxQcopy;
+}
+
+
+uint32_t lw_can_get_errata_rxQcopy()
+{
+	uint32_t errata_rxQcopy;
+	LWCAN_ENTER_CRITICAL();
+	errata_rxQcopy = pCanDriverObj != NULL ? pCanDriverObj->errata_rxQcopy : 0;
+	LWCAN_EXIT_CRITICAL();
+	return errata_rxQcopy;
+}
+
+
 //===================================================================================================================
 // END PUBLIC API
 //===================================================================================================================
