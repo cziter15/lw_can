@@ -496,12 +496,9 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 void lw_can_watchdog(void* param)
 {
 	const TickType_t watchdogSmallDelay = pdMS_TO_TICKS(50);
-	const TickType_t watchdogCoooldownDelay = pdMS_TO_TICKS(5000);
 	
 	while (true)
 	{
-		bool wdtTriggered = false;
-
 		// Delay for a while.
 		vTaskDelay(watchdogSmallDelay);
 
@@ -525,13 +522,8 @@ void lw_can_watchdog(void* param)
 				impl_write_frame_phy(&pCanDriverObj->savedFrame);
 				++pCanDriverObj->errataResendFrameCnt;
 			}
-			wdtTriggered = true;
 		}
 		LWCAN_EXIT_CRITICAL();
-
-		// Wait some more time after reset sequence.
-		if (wdtTriggered)
-			vTaskDelay(watchdogCoooldownDelay);
 	}
 }
 
