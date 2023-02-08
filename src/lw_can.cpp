@@ -57,6 +57,17 @@ typedef struct
 	uint32_t mask;
 } lw_can_filter_t;
 
+typedef union
+{
+	uint8_t U;											// Unsigned access 
+	struct 
+	{
+		bool isDriverStarted : 1;						// Flag to indicate if CAN driver is started.
+		bool needResetPeripheral : 1;					// Flag to indicate if need to reset CAN peripheral.
+		bool hasAnyFrameInTxBuffer : 1;					// Flag to indicate if CAN driver is transmitting.
+	} B;
+} lw_can_driver_state;
+
 typedef struct
 {
 	lw_can_filter_t filter;									// Filter settings.
@@ -64,20 +75,19 @@ typedef struct
 	gpio_num_t txPin;										// CAN TX pin.
 	gpio_num_t rxPin;										// CAN RX pin.
 	uint16_t speedKbps;										// CAN speed in kbps.
+	uint8_t ocMode;											// CAN output control mode.
 
 	uint8_t rxQueueSize;									// CAN RX queue size.
 	uint8_t txQueueSize;									// CAN TX queue size.
-
 	QueueHandle_t rxQueue;									// CAN RX queue handle.
 	QueueHandle_t txQueue;									// CAN TX queue handle.
+
+	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
 
-	uint8_t ocMode;											// CAN output control mode.
-
 	uint32_t wdHitCnt;										// Watchdog hit counter.
-
 	uint32_t arbLostCnt;									// Arbitration lost counter.
 	uint32_t dataOverrunCnt;								// Data overrun counter.
 	uint32_t wakeUpCnt;										// Wake up counter.
@@ -85,21 +95,8 @@ typedef struct
 	uint32_t busErrorCnt;									// Bus error counter.
 	uint32_t errataResendFrameCnt;							// RXFrame errata error counter.
 
-	union
-	{
-		uint8_t U;											// Unsigned access 
-		struct 
-		{
-			bool isDriverStarted : 1;						// Flag to indicate if CAN driver is started.
-			bool needResetPeripheral : 1;					// Flag to indicate if need to reset CAN peripheral.
-			bool hasAnyFrameInTxBuffer : 1;					// Flag to indicate if CAN driver is transmitting.
-		} B;
-	} state;
-
-	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
-
+	lw_can_driver_state state;								// Driver state flags.
 } lw_can_driver_obj_t;
-
 
 inline void pdo_reset_bus_counters(lw_can_driver_obj_t* pdo)
 {
@@ -233,18 +230,17 @@ bool impl_lw_can_start(bool notInReset = true)
 			case 1000:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x4;
 				quanta = 0.125;
-				break;
-
+			break;
 			case 800:
 				MODULE_CAN->BTR1.B.TSEG1 = 0x6;
 				quanta = 0.125;
-				break;
+			break;
 			case 33:
 				//changes everything...
 				MODULE_CAN->BTR1.B.TSEG2 = 0x6;
 				MODULE_CAN->BTR1.B.TSEG1 = 0xf; //16 + 1 + 7 = 24
 				quanta = ((float)1000.0f / 33.3f) / 24.0f;
-				break;
+			break;
 			default:
 				MODULE_CAN->BTR1.B.TSEG1 = 0xc;
 				quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
@@ -283,10 +279,10 @@ bool impl_lw_can_start(bool notInReset = true)
 		// Clear error counters.
 		MODULE_CAN->TXERR.U = 0;
 		MODULE_CAN->RXERR.U = 0;
-		(void) MODULE_CAN->ECC;
+		(void)MODULE_CAN->ECC;
 
 		// Clear interrupt flags.
-		(void) MODULE_CAN->IR.U;
+		(void)MODULE_CAN->IR.U;
 
 		if (notInReset)
 		{
