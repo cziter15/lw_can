@@ -27,7 +27,7 @@
  * SOFTWARE.
  *
  */
-
+#include <Arduino.h>
 #include "lw_can.h"
 #include <stdint.h>
 #include <math.h>
@@ -63,7 +63,6 @@ typedef union
 	struct 
 	{
 		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
-		bool needRestartPeripheral : 1;						// Flag to indicate if need to reset CAN peripheral.
 		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
 } lw_can_driver_state;
@@ -208,7 +207,7 @@ bool impl_lw_can_start(bool notInReset = true)
 		(void)MODULE_CAN->IR.U;
 		
 		// Synchronization jump width is the same for all baud rates
-		MODULE_CAN->BTR0.B.SJW = 0x1;
+		MODULE_CAN->BTR0.B.SJW = 0x3;
 
 		// TSEG2 is the same for all baud rates
 		MODULE_CAN->BTR1.B.TSEG2 = 0x1;
@@ -405,6 +404,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 {
 	lw_can_frame_t frame;
 	uint32_t interrupt;
+	BaseType_t xHigherPriorityTaskWoken;
 
 	LWCAN_ENTER_CRITICAL_ISR();
 
@@ -427,7 +427,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->counters.busErrorCnt;
 
-	// We should always read buffered frames, even when error occurred.
+	// Read frames
 	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
 	{
 		impl_lw_read_frame_phy();
@@ -441,11 +441,13 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		impl_lw_can_stop(false);
-		pCanDriverObj->state.B.needRestartPeripheral = true;
+		xTaskResumeFromISR(pCanDriverObj->wdtHandle);
+		LWCAN_EXIT_CRITICAL_ISR();
+		return;
 	}
+
 	// Handle sending in case there is no error.
-	else if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
+	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
 	{
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
 		{
@@ -463,22 +465,17 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 
 void lw_can_watchdog(void* param)
 {
-	const TickType_t watchdogSmallDelay = pdMS_TO_TICKS(50);
-	
 	while (true)
 	{
-		// Delay for a while.
-		vTaskDelay(watchdogSmallDelay);
+		vTaskSuspend(NULL);
 
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted && pCanDriverObj->state.B.needRestartPeripheral)
+		if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted)
 		{	
-			// Reset needRestartPeripheral flag.
-			pCanDriverObj->state.B.needRestartPeripheral = false;
-
 			// Do CAN peripheral reset.
+			impl_lw_can_stop(false);
 			impl_lw_can_start(false);
-
+	
 			// Increment watchdog counter.
 			++pCanDriverObj->counters.wdHitCnt;
 
