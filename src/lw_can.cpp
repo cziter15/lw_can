@@ -409,7 +409,7 @@ void IRAM_ATTR impl_lwcan_interrupt()
 		++pCanDriverObj->counters.busErrorCnt;
 
 	// Read frames
-	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
+	for (uint32_t rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
 	{
 		impl_lw_read_frame_phy();
 	}
