@@ -59,12 +59,12 @@ typedef struct
 
 typedef union
 {
-	uint8_t U;											// Unsigned access 
+	uint8_t U;												// Unsigned access 
 	struct 
 	{
-		bool isDriverStarted : 1;						// Flag to indicate if CAN driver is started.
-		bool needResetPeripheral : 1;					// Flag to indicate if need to reset CAN peripheral.
-		bool hasAnyFrameInTxBuffer : 1;					// Flag to indicate if CAN driver is transmitting.
+		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
+		bool needResetPeripheral : 1;						// Flag to indicate if need to reset CAN peripheral.
+		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
 } lw_can_driver_state;
 
@@ -83,7 +83,7 @@ typedef struct
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
 	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
-	lw_can_bus_counters counters;								// Statistics counters.
+	lw_can_bus_counters counters;							// Statistics counters.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
@@ -136,16 +136,12 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 		if(frame.FIR.B.FF == LWCAN_FRAME_STD)
 		{
 			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-			{
 				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
-			}
 		}
 		else
 		{
 			for(thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
-			{
 				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
-			}
 		}
 		
 		// Send to RX queue.

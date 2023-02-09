@@ -350,11 +350,11 @@ typedef struct
 
 typedef struct
 {
-	uint32_t wdHitCnt;										// Watchdog hit counter.
-	uint32_t arbLostCnt;									// Arbitration lost counter.
-	uint32_t dataOverrunCnt;								// Data overrun counter.
-	uint32_t wakeUpCnt;										// Wake up counter.
-	uint32_t errPassiveCnt;									// Error passive counter.
-	uint32_t busErrorCnt;									// Bus error counter.
-	uint32_t errataResendFrameCnt;							// RXFrame errata error counter.
+	uint32_t wdHitCnt;								// Watchdog hit counter.
+	uint32_t arbLostCnt;							// Arbitration lost counter.
+	uint32_t dataOverrunCnt;						// Data overrun counter.
+	uint32_t wakeUpCnt;								// Wake up counter.
+	uint32_t errPassiveCnt;							// Error passive counter.
+	uint32_t busErrorCnt;							// Bus error counter.
+	uint32_t errataResendFrameCnt;					// RXFrame errata error counter.
 } lw_can_bus_counters;
