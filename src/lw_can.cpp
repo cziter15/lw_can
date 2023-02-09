@@ -83,29 +83,22 @@ typedef struct
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
 	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
+	lw_can_bus_counters counters;								// Statistics counters.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	TaskHandle_t wdtHandle;									// CAN watchdog task handle.
-
-	uint32_t wdHitCnt;										// Watchdog hit counter.
-	uint32_t arbLostCnt;									// Arbitration lost counter.
-	uint32_t dataOverrunCnt;								// Data overrun counter.
-	uint32_t wakeUpCnt;										// Wake up counter.
-	uint32_t errPassiveCnt;									// Error passive counter.
-	uint32_t busErrorCnt;									// Bus error counter.
-	uint32_t errataResendFrameCnt;							// RXFrame errata error counter.
 
 	lw_can_driver_state state;								// Driver state flags.
 } lw_can_driver_obj_t;
 
 inline void pdo_reset_bus_counters(lw_can_driver_obj_t* pdo)
 {
-	pdo->arbLostCnt = 0;
-	pdo->busErrorCnt = 0;
-	pdo->dataOverrunCnt = 0;
-	pdo->errPassiveCnt = 0;
-	pdo->busErrorCnt = 0;
-	pdo->errataResendFrameCnt = 0;
+	pdo->counters.arbLostCnt = 0;
+	pdo->counters.busErrorCnt = 0;
+	pdo->counters.dataOverrunCnt = 0;
+	pdo->counters.errPassiveCnt = 0;
+	pdo->counters.busErrorCnt = 0;
+	pdo->counters.errataResendFrameCnt = 0;
 }
 
 inline void pdo_reset_filter(lw_can_driver_obj_t * pdo)
@@ -371,7 +364,7 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 		pCanDriverObj->txQueueSize = txQueueSize;
 
 		// Reset wdt counter.
-		pCanDriverObj->wdHitCnt = 0;
+		pCanDriverObj->counters.wdHitCnt = 0;
 
 		// Reset states.
 		pCanDriverObj->state.U = 0;
@@ -428,19 +421,19 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 
 	// Handle counters.
 	if (interrupt & LWCAN_IRQ_ARB_LOST)
-		++pCanDriverObj->arbLostCnt;
+		++pCanDriverObj->counters.arbLostCnt;
 	
 	if (interrupt & LWCAN_IRQ_DATA_OVERRUN)
-		++pCanDriverObj->dataOverrunCnt;
+		++pCanDriverObj->counters.dataOverrunCnt;
 
 	if (interrupt & LWCAN_IRQ_WAKEUP)
-		++pCanDriverObj->wakeUpCnt;
+		++pCanDriverObj->counters.wakeUpCnt;
 
 	if (interrupt & LWCAN_IRQ_ERR_PASSIVE)
-		++pCanDriverObj->errPassiveCnt;
+		++pCanDriverObj->counters.errPassiveCnt;
 
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
-		++pCanDriverObj->busErrorCnt;
+		++pCanDriverObj->counters.busErrorCnt;
 
 	// We should always read buffered frames, even when error occurred.
 	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
@@ -496,13 +489,13 @@ void lw_can_watchdog(void* param)
 			esp_intr_enable(pCanDriverObj->intrHandle);
 
 			// Increment watchdog counter.
-			++pCanDriverObj->wdHitCnt;
+			++pCanDriverObj->counters.wdHitCnt;
 
 			// If we reset due to errata workaround, then send pedning frame.
 			if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
 			{
 				impl_write_frame_phy(pCanDriverObj->savedFrame);
-				++pCanDriverObj->errataResendFrameCnt;
+				++pCanDriverObj->counters.errataResendFrameCnt;
 			}
 		}
 		LWCAN_EXIT_CRITICAL();
@@ -588,85 +581,19 @@ bool lw_can_set_filter(uint32_t id, uint32_t mask)
 	return filterSetStatus;
 }
 
-uint32_t lw_can_get_wd_hits()
+bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToTx, uint32_t& msgsToRx)
 {
-	uint32_t wdHitCnt;
+	bool readDone = false;
 	LWCAN_ENTER_CRITICAL();
-	wdHitCnt = pCanDriverObj != NULL ? pCanDriverObj->wdHitCnt : 0;
+	if (pCanDriverObj != NULL)
+	{
+		outCounters = pCanDriverObj->counters;
+		msgsToRx = uxQueueMessagesWaiting(pCanDriverObj->rxQueue);
+		msgsToTx = uxQueueMessagesWaiting(pCanDriverObj->txQueue);
+		readDone = true;
+	}
 	LWCAN_EXIT_CRITICAL();
-	return wdHitCnt;
-}
-
-uint32_t lw_can_get_arb_lost_cnt()
-{
-	uint32_t arbLostCnt;
-	LWCAN_ENTER_CRITICAL();
-	arbLostCnt = pCanDriverObj != NULL ? pCanDriverObj->arbLostCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return arbLostCnt;
-}
-
-uint32_t lw_can_get_data_overrun_cnt()
-{
-	uint32_t data_overrun_cnt;
-	LWCAN_ENTER_CRITICAL();
-	data_overrun_cnt = pCanDriverObj != NULL ? pCanDriverObj->dataOverrunCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return data_overrun_cnt;
-}
-
-uint32_t lw_can_get_wake_up_cnt()
-{
-	uint32_t wakeUpCnt;
-	LWCAN_ENTER_CRITICAL();
-	wakeUpCnt = pCanDriverObj != NULL ? pCanDriverObj->wakeUpCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return wakeUpCnt;
-}
-
-uint32_t lw_can_get_err_passive_cnt()
-{
-	uint32_t errPassiveCnt;
-	LWCAN_ENTER_CRITICAL();
-	errPassiveCnt = pCanDriverObj != NULL ? pCanDriverObj->errPassiveCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return errPassiveCnt;
-}
-
-uint32_t lw_can_get_bus_error_cnt()
-{
-	uint32_t busErrorCnt;
-	LWCAN_ENTER_CRITICAL();
-	busErrorCnt = pCanDriverObj != NULL ? pCanDriverObj->busErrorCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return busErrorCnt;
-}
-
-uint32_t lw_can_get_errata_resend_frame_cnt()
-{
-	uint32_t errataResendFrameCnt;
-	LWCAN_ENTER_CRITICAL();
-	errataResendFrameCnt = pCanDriverObj != NULL ? pCanDriverObj->errataResendFrameCnt : 0;
-	LWCAN_EXIT_CRITICAL();
-	return errataResendFrameCnt;
-}
-
-uint32_t lw_can_get_msgs_to_rx()
-{
-	uint32_t msgsToRx;
-	LWCAN_ENTER_CRITICAL();
-	msgsToRx = pCanDriverObj != NULL ? uxQueueMessagesWaiting(pCanDriverObj->rxQueue) : 0;
-	LWCAN_EXIT_CRITICAL();
-	return msgsToRx;
-}
-
-uint32_t lw_can_get_msgs_to_tx()
-{
-	uint32_t msgsToTx;
-	LWCAN_ENTER_CRITICAL();
-	msgsToTx = pCanDriverObj != NULL ? uxQueueMessagesWaiting(pCanDriverObj->txQueue) : 0;
-	LWCAN_EXIT_CRITICAL();
-	return msgsToTx;
+	return readDone;
 }
 //===================================================================================================================
 // END PUBLIC API

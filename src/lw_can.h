@@ -101,64 +101,12 @@ extern bool lw_can_transmit(const lw_can_frame_t& frame);
 extern bool lw_can_read_next_frame(lw_can_frame_t& outFrame);
 
 /*
-	This function return the count of watchdog hits (automatic bus reset).
+	This function will return all bus counter information.
 
-	@return Count of watchdog hits.
+	@param outCounters Reference to counters structure to fill.
+	@param msgsToTx Reference to fill with number of messages to transmit.
+	@param msgsToRx Reference to fill with number of messages to receive.
+
+	@return True on success, false on fail.
 */
-extern uint32_t lw_can_get_wd_hits();
-
-/*
-	This function return the count of arbitration loss.
-
-	@return Count of arbitration loss.
-*/
-extern uint32_t lw_can_get_arb_lost_cnt();
-
-/*
-	This function return the count of data overrun.
-
-	@return Count of data overrun.
-*/
-extern uint32_t lw_can_get_data_overrun_cnt();
-
-/*
-	This function return the count of wake ups.
-
-	@return Count of wake ups.
-*/
-extern uint32_t lw_can_get_wake_up_cnt();
-
-/*
-	This function return the count of error passive ocurrences.
-
-	@return Count of error passive ocurrences.
-*/
-extern uint32_t lw_can_get_err_passive_cnt();
-
-/*
-	This function return the count of bus error ocurrences.
-
-	@return Count of bus error ocurrences.
-*/
-extern uint32_t lw_can_get_bus_error_cnt();
-
-/*
-	This function return the counter of errata frame resend counter.
-
-	@return Count of errata resend frame.
-*/
-extern uint32_t lw_can_get_errata_resend_frame_cnt();
-
-/*
-	This function return the number of messages waiting to be transmitted.
-up
-	@return Count of messages to be received.
-*/
-extern uint32_t lw_can_get_msgs_to_rx();
-
-/*
-	This function return the number of messages to be transmitted.
-
-	@return Count of messages to be transmitted..
-*/
-extern uint32_t lw_can_get_msgs_to_tx();
+extern bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToTx, uint32_t& msgsToRx);
