@@ -442,6 +442,12 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->busErrorCnt;
 
+	// We should always read buffered frames, even when error occurred.
+	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
+	{
+		impl_lw_read_frame_phy();
+	}
+
 	// Handle error interrupts.
 	if (interrupt & (LWCAN_IRQ_ERR				//0x4
 					| LWCAN_IRQ_DATA_OVERRUN	//0x8
@@ -452,20 +458,9 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	{
 		pCanDriverObj->state.B.needResetPeripheral = true;
 		esp_intr_disable(pCanDriverObj->intrHandle);
-		LWCAN_EXIT_CRITICAL_ISR();
-		return;
 	}
-
-	// Always try to read all frames
-	
-	//interrupt & LWCAN_IRQ_RX)
-	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
-	{
-		impl_lw_read_frame_phy();
-	}
-
-	// Handle TX complete interrupt (incl. errata fix).
-	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
+	// Handle sending in case there is no error.
+	else if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
 	{
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
 		{
