@@ -457,15 +457,15 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	}
 
 	// Always try to read all frames
-	if (MODULE_CAN->RMC.B.RMC) //interrupt & LWCAN_IRQ_RX)
+	
+	//interrupt & LWCAN_IRQ_RX)
+	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
 	{
-		for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
-		{
-			impl_lw_read_frame_phy();
-		}
+		impl_lw_read_frame_phy();
 	}
+
 	// Handle TX complete interrupt (incl. errata fix).
-	else if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
+	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
 	{
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
 		{
