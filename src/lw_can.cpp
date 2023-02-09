@@ -42,7 +42,7 @@
 //===================================================================================================================
 // Critical sections.
 //===================================================================================================================
-static portMUX_TYPE globalCanSpinLock 	=	 portMUX_INITIALIZER_UNLOCKED;
+static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 #define LWCAN_ENTER_CRITICAL()				portENTER_CRITICAL(&globalCanSpinLock)
 #define LWCAN_EXIT_CRITICAL()				portEXIT_CRITICAL(&globalCanSpinLock)
 #define LWCAN_ENTER_CRITICAL_ISR()			portENTER_CRITICAL_ISR(&globalCanSpinLock)
@@ -129,12 +129,12 @@ void IRAM_ATTR impl_lw_read_frame_phy()
 	{
 		if (frame.FIR.B.FF == LWCAN_FRAME_STD)
 		{
-			for(uint8_t thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			for (uint8_t thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
 				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[thisByte];
 		}
 		else
 		{
-			for(uint8_t thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
+			for (uint8_t thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
 				frame.data.u8[thisByte] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte];
 		}
 		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
@@ -408,8 +408,8 @@ void IRAM_ATTR impl_lwcan_interrupt()
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->counters.busErrorCnt;
 
-	// Read frames
-	for (uint32_t rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
+	// Read frames from buffer.
+	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
 	{
 		impl_lw_read_frame_phy();
 	}
@@ -444,6 +444,7 @@ void IRAM_ATTR impl_lwcan_interrupt()
 
 void impl_lw_can_watchdog()
 {
+	// If not installed or not started, return.
 	if (!pCanDriverObj || !pCanDriverObj->state.B.isDriverStarted)
 		return;
 
@@ -564,7 +565,7 @@ bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToT
 {
 	bool readDone{false};
 	LWCAN_ENTER_CRITICAL();
-	if (pCanDriverObj != nullptr)
+	if (pCanDriverObj)
 	{
 		outCounters = pCanDriverObj->counters;
 		msgsToRx = uxQueueMessagesWaiting(pCanDriverObj->rxQueue);
