@@ -63,7 +63,7 @@ typedef union
 	struct 
 	{
 		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
-		bool needResetPeripheral : 1;						// Flag to indicate if need to reset CAN peripheral.
+		bool needRestartPeripheral : 1;						// Flag to indicate if need to reset CAN peripheral.
 		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
 } lw_can_driver_state;
@@ -319,7 +319,6 @@ bool impl_lw_can_stop(bool notInReset = true)
 		}
 
 		// Clear state flags.
-		pCanDriverObj->state.B.needResetPeripheral = false;
 		pCanDriverObj->state.B.isDriverStarted = false;
 
 		return true;
@@ -442,8 +441,8 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		pCanDriverObj->state.B.needResetPeripheral = true;
-		esp_intr_disable(pCanDriverObj->intrHandle);
+		impl_lw_can_stop(false);
+		pCanDriverObj->state.B.needRestartPeripheral = true;
 	}
 	// Handle sending in case there is no error.
 	else if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
@@ -472,14 +471,13 @@ void lw_can_watchdog(void* param)
 		vTaskDelay(watchdogSmallDelay);
 
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted && pCanDriverObj->state.B.needResetPeripheral)
+		if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted && pCanDriverObj->state.B.needRestartPeripheral)
 		{	
-			// Do CAN peripheral reset.
-			impl_lw_can_stop(false);
-			impl_lw_can_start(false);
+			// Reset needRestartPeripheral flag.
+			pCanDriverObj->state.B.needRestartPeripheral = false;
 
-			// Enable INTR handler back (it is disabled on reset request).
-			esp_intr_enable(pCanDriverObj->intrHandle);
+			// Do CAN peripheral reset.
+			impl_lw_can_start(false);
 
 			// Increment watchdog counter.
 			++pCanDriverObj->counters.wdHitCnt;
