@@ -108,6 +108,16 @@ typedef struct
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] = ((x) >> 5);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] = ((x) << 3);	\
 
+#define LWCAN_RESET_MBX_CTRL(x)						x->MOD.B.AFM = 0;					\
+													x->MBX_CTRL.ACC.CODE[0] = 0xff;		\
+													x->MBX_CTRL.ACC.CODE[1] = 0xff;		\
+													x->MBX_CTRL.ACC.CODE[2] = 0xff;		\
+													x->MBX_CTRL.ACC.CODE[3] = 0xff;		\
+													x->MBX_CTRL.ACC.MASK[0] = 0xff;		\
+													x->MBX_CTRL.ACC.MASK[1] = 0xff;		\
+													x->MBX_CTRL.ACC.MASK[2] = 0xff;		\
+													x->MBX_CTRL.ACC.MASK[3] = 0xff;		\
+
 typedef enum  
 {
 	LWCAN_IRQ_RX =				BIT(0),				// RX Interrupt 
@@ -350,7 +360,6 @@ typedef struct
 
 typedef struct
 {
-	uint32_t wdHitCnt;								// Watchdog hit counter.
 	uint32_t arbLostCnt;							// Arbitration lost counter.
 	uint32_t dataOverrunCnt;						// Data overrun counter.
 	uint32_t wakeUpCnt;								// Wake up counter.
