@@ -27,7 +27,6 @@
  * SOFTWARE.
  *
  */
-#include <Arduino.h>
 #include "lw_can.h"
 #include <stdint.h>
 #include <math.h>
