@@ -48,14 +48,6 @@ static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 #define LWCAN_ENTER_CRITICAL_ISR()			portENTER_CRITICAL_ISR(&globalCanSpinLock)
 #define LWCAN_EXIT_CRITICAL_ISR()			portEXIT_CRITICAL_ISR(&globalCanSpinLock)
 
-#define PERIPH_CAN_ON()													\
-	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);		\
-	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);		\
-
-#define PERIPH_CAN_OFF()													\
-	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);	\
-	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);			\
-
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
@@ -176,7 +168,7 @@ bool impl_lw_can_start()
 	double quanta;
 
 	// Enable module
-	PERIPH_CAN_ON();
+	LWCAN_PERIPH_ON();
 
 	// First thing once module is enabled at hardware level is to make sure it is in reset
 	MODULE_CAN->MOD.B.RM = 0x1; 
@@ -286,7 +278,7 @@ bool impl_lw_can_stop()
 
 	// Reset the module.
 	MODULE_CAN->MOD.B.RM = 0x1;
-	PERIPH_CAN_OFF();
+	LWCAN_PERIPH_OFF();
 
 	MODULE_CAN->IER.U = 0;
 

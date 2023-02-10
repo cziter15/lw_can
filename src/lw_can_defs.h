@@ -118,6 +118,12 @@ typedef struct
 													x->MBX_CTRL.ACC.MASK[2] = 0xff;		\
 													x->MBX_CTRL.ACC.MASK[3] = 0xff;		\
 
+#define LWCAN_PERIPH_ON()						DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN); 		\
+												DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);		\
+
+#define LWCAN_PERIPH_OFF()						DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);	\
+												DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);			\
+
 typedef enum  
 {
 	LWCAN_IRQ_RX =				BIT(0),				// RX Interrupt 
