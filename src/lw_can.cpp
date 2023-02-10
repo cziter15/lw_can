@@ -358,17 +358,19 @@ bool impl_lw_can_uninstall()
 	return true;
 }
 
-inline void IRAM_ATTR impl_lw_can_rst_from_isr()
+void IRAM_ATTR impl_lw_can_rst_from_isr()
 {
 	// Save and enter reset.
 	uint32_t BTR0 = MODULE_CAN->BTR0.U;
 	uint32_t BTR1 = MODULE_CAN->BTR1.U;
 	uint32_t IER = MODULE_CAN->IER.U;
 	MODULE_CAN->MOD.B.RM = 1;
+	LWCAN_PERIPH_OFF()
 
 	// Load and leave reset.
-	LWCAN_RESET_MBX_CTRL(MODULE_CAN);
+	LWCAN_PERIPH_ON()
 	MODULE_CAN->MOD.B.RM = 1;
+	LWCAN_RESET_MBX_CTRL(MODULE_CAN)
 	MODULE_CAN->BTR0.U = BTR0;
 	MODULE_CAN->BTR1.U = BTR1;
 	MODULE_CAN->IER.U = IER;
