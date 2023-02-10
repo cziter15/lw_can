@@ -121,7 +121,7 @@ void IRAM_ATTR lw_can_interrupt(void *arg);
 //===================================================================================================================
 // Spinlock free functions.
 //===================================================================================================================
-void IRAM_ATTR impl_lw_read_frame_phy()
+void IRAM_ATTR impl_lw_can_read_frame_phy()
 {
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
@@ -367,7 +367,24 @@ bool impl_lw_can_uninstall()
 	return true;
 }
 
-void IRAM_ATTR impl_lwcan_interrupt()
+inline void IRAM_ATTR impl_lw_can_rst_from_isr()
+{
+	// Save and enter reset.
+	uint32_t BTR0 = MODULE_CAN->BTR0.U;
+	uint32_t BTR1 = MODULE_CAN->BTR1.U;
+	uint32_t IER = MODULE_CAN->IER.U;
+	MODULE_CAN->MOD.B.RM = 1;
+
+	// Load and leave reset.
+	LWCAN_RESET_MBX_CTRL(MODULE_CAN);
+	MODULE_CAN->MOD.B.RM = 1;
+	MODULE_CAN->BTR0.U = BTR0;
+	MODULE_CAN->BTR1.U = BTR1;
+	MODULE_CAN->IER.U = IER;
+	MODULE_CAN->MOD.B.RM = 0;
+}
+
+void IRAM_ATTR impl_lw_can_interrupt()
 {
 	// Read and clear interrupts.
 	uint32_t interrupt {MODULE_CAN->IR.U};
@@ -391,31 +408,21 @@ void IRAM_ATTR impl_lwcan_interrupt()
 	// Read frames from buffer.
 	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
 	{
-		impl_lw_read_frame_phy();
+		impl_lw_can_read_frame_phy();
 	}
 
 	// Handle error interrupts.
-	if (interrupt & (LWCAN_IRQ_ERR				//0x4
+	if (interrupt & ( LWCAN_IRQ_ERR				//0x4
 					| LWCAN_IRQ_DATA_OVERRUN	//0x8
 					| LWCAN_IRQ_WAKEUP			//0x10
 					| LWCAN_IRQ_ERR_PASSIVE		//0x20
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		// Save and enter reset.
-		uint32_t BTR0 = MODULE_CAN->BTR0.U;
-		uint32_t BTR1 = MODULE_CAN->BTR1.U;
-		uint32_t IER = MODULE_CAN->IER.U;
-		MODULE_CAN->MOD.B.RM = 1;
+		// Reset module but preserve registers.
+		impl_lw_can_rst_from_isr();
 
-		// Load and leave reset.
-		LWCAN_RESET_MBX_CTRL(MODULE_CAN);
-		MODULE_CAN->MOD.B.RM = 1;
-		MODULE_CAN->BTR0.U = BTR0;
-		MODULE_CAN->BTR1.U = BTR1;
-		MODULE_CAN->IER.U = IER;
-		MODULE_CAN->MOD.B.RM = 0;
-
+		// Requeue the frame if we broke sending.
 		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
 		{
 			impl_write_frame_phy(pCanDriverObj->savedFrame);
@@ -445,7 +452,7 @@ void IRAM_ATTR impl_lwcan_interrupt()
 void IRAM_ATTR lw_can_interrupt(void* arg)
 {
 	LWCAN_ENTER_CRITICAL_ISR();
-	impl_lwcan_interrupt();
+	impl_lw_can_interrupt();
 	LWCAN_EXIT_CRITICAL_ISR();
 }
 //===================================================================================================================
