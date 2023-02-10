@@ -108,21 +108,30 @@ typedef struct
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] = ((x) >> 5);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] = ((x) << 3);	\
 
-#define LWCAN_RESET_MBX_CTRL(x)						x->MOD.B.AFM = 0;					\
-													x->MBX_CTRL.ACC.CODE[0] = 0xff;		\
-													x->MBX_CTRL.ACC.CODE[1] = 0xff;		\
-													x->MBX_CTRL.ACC.CODE[2] = 0xff;		\
-													x->MBX_CTRL.ACC.CODE[3] = 0xff;		\
-													x->MBX_CTRL.ACC.MASK[0] = 0xff;		\
-													x->MBX_CTRL.ACC.MASK[1] = 0xff;		\
-													x->MBX_CTRL.ACC.MASK[2] = 0xff;		\
-													x->MBX_CTRL.ACC.MASK[3] = 0xff;		\
+#define LWCAN_CLEAR_MBX_CTRL()						MODULE_CAN->MOD.B.AFM = 0;						\
+													MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.CODE[3] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.MASK[0] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.MASK[1] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xff;		\
+													MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;		\
 
-#define LWCAN_PERIPH_ON()						DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN); 		\
-												DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);		\
+#define LWCAN_PERIPH_ON()							DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN); 		\
+													DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);		\
+													MODULE_CAN->MOD.B.RM = 1;												\
+													MODULE_CAN->IER.U = 0;													\
 
-#define LWCAN_PERIPH_OFF()						DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);	\
-												DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);			\
+#define LWCAN_PERIPH_OFF()							MODULE_CAN->MOD.B.RM = 1;												\
+													DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);	\
+													DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);			\
+													MODULE_CAN->IER.U = 0;													\
+
+#define LWCAN_CLEAR_IR_AND_ECC()					MODULE_CAN->TXERR.U = 0;												\
+													MODULE_CAN->RXERR.U = 0;												\
+													(void)MODULE_CAN->ECC;													\
+													(void)MODULE_CAN->IR.U;													\
 
 typedef enum  
 {

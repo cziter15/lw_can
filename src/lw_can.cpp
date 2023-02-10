@@ -169,9 +169,6 @@ bool impl_lw_can_start()
 	// Enable module
 	LWCAN_PERIPH_ON();
 
-	// First thing once module is enabled at hardware level is to make sure it is in reset
-	MODULE_CAN->MOD.B.RM = 1; 
-
 	// Configure TX pin
 	gpio_set_level(pCanDriverObj->txPin, 1);
 	gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
@@ -185,12 +182,6 @@ bool impl_lw_can_start()
 
 	// Set to PELICAN mode
 	MODULE_CAN->CDR.B.CAN_M = 1;
-
-	// Disable all interrupt sources until we're ready
-	MODULE_CAN->IER.U = 0;
-
-	// Clear interrupt flags
-	(void)MODULE_CAN->IR.U;
 	
 	// Synchronization jump width is the same for all baud rates
 	MODULE_CAN->BTR0.B.SJW = 3;
@@ -237,18 +228,10 @@ bool impl_lw_can_start()
 	MODULE_CAN->IER.U = 0xEF; //1110 1111
 
 	// Set acceptance filter.
-	LWCAN_RESET_MBX_CTRL(MODULE_CAN);
+	LWCAN_CLEAR_MBX_CTRL();
 
 	// Set to normal mode.
 	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
-
-	// Clear error counters.
-	MODULE_CAN->TXERR.U = 0;
-	MODULE_CAN->RXERR.U = 0;
-	(void)MODULE_CAN->ECC;
-
-	// Clear interrupt flags.
-	(void)MODULE_CAN->IR.U;
 
 	// Allocate queues.
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
@@ -259,6 +242,9 @@ bool impl_lw_can_start()
 	
 	// Install CAN interrupt service.
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
+
+	// Clear error counters and current interrupt flag.
+	LWCAN_CLEAR_IR_AND_ECC();
 
 	// Set state.
 	pCanDriverObj->state.B.isDriverStarted = true;
@@ -275,11 +261,8 @@ bool impl_lw_can_stop()
 	if (!pCanDriverObj || !pCanDriverObj->state.B.isDriverStarted)
 		return false;
 
-	// Reset the module.
-	MODULE_CAN->MOD.B.RM = 1;
+	// Turn off module.
 	LWCAN_PERIPH_OFF();
-
-	MODULE_CAN->IER.U = 0;
 
 	// Remove interrupt and semaphore.
 	esp_intr_free(pCanDriverObj->intrHandle);
@@ -360,20 +343,27 @@ bool impl_lw_can_uninstall()
 
 void IRAM_ATTR impl_lw_can_rst_from_isr()
 {
-	// Save and enter reset.
+	// Save registers.
 	uint32_t BTR0 = MODULE_CAN->BTR0.U;
 	uint32_t BTR1 = MODULE_CAN->BTR1.U;
+	uint32_t CDR = MODULE_CAN->CDR.U;
 	uint32_t IER = MODULE_CAN->IER.U;
-	MODULE_CAN->MOD.B.RM = 1;
-	LWCAN_PERIPH_OFF()
 
-	// Load and leave reset.
+	// Turn off -> Turn on.
+	LWCAN_PERIPH_OFF()
 	LWCAN_PERIPH_ON()
-	MODULE_CAN->MOD.B.RM = 1;
-	LWCAN_RESET_MBX_CTRL(MODULE_CAN)
+
+	// Restore registers.
+	LWCAN_CLEAR_MBX_CTRL()
 	MODULE_CAN->BTR0.U = BTR0;
 	MODULE_CAN->BTR1.U = BTR1;
 	MODULE_CAN->IER.U = IER;
+	MODULE_CAN->CDR.U = CDR;
+
+	// Clear error counters and interrupts.
+	LWCAN_CLEAR_IR_AND_ECC();
+
+	// Release reset mode.
 	MODULE_CAN->MOD.B.RM = 0;
 }
 
