@@ -135,7 +135,7 @@ void IRAM_ATTR impl_lw_can_read_frame_phy()
 		xQueueSendFromISR(pCanDriverObj->rxQueue, &frame, &xHigherPriorityTaskWoken);
 	}
 
-	MODULE_CAN->CMR.B.RRB = 0x1;
+	MODULE_CAN->CMR.B.RRB = 1;
 }
 
 void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t& frame) 
@@ -154,7 +154,7 @@ void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t& frame)
 			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = frame.data.u8[thisByte];
 	}
 	pCanDriverObj->savedFrame = frame; // need to cache to workaround errata bug.
-	MODULE_CAN->CMR.B.TR = 0x1;
+	MODULE_CAN->CMR.B.TR = 1;
 }
 
 bool impl_lw_can_start()
@@ -170,7 +170,7 @@ bool impl_lw_can_start()
 	LWCAN_PERIPH_ON();
 
 	// First thing once module is enabled at hardware level is to make sure it is in reset
-	MODULE_CAN->MOD.B.RM = 0x1; 
+	MODULE_CAN->MOD.B.RM = 1; 
 
 	// Configure TX pin
 	gpio_set_level(pCanDriverObj->txPin, 1);
@@ -184,7 +184,7 @@ bool impl_lw_can_start()
 	gpio_pad_select_gpio(pCanDriverObj->rxPin);
 
 	// Set to PELICAN mode
-	MODULE_CAN->CDR.B.CAN_M = 0x1;
+	MODULE_CAN->CDR.B.CAN_M = 1;
 
 	// Disable all interrupt sources until we're ready
 	MODULE_CAN->IER.U = 0;
@@ -193,30 +193,30 @@ bool impl_lw_can_start()
 	(void)MODULE_CAN->IR.U;
 	
 	// Synchronization jump width is the same for all baud rates
-	MODULE_CAN->BTR0.B.SJW = 0x3;
+	MODULE_CAN->BTR0.B.SJW = 3;
 
 	// TSEG2 is the same for all baud rates
-	MODULE_CAN->BTR1.B.TSEG2 = 0x1;
+	MODULE_CAN->BTR1.B.TSEG2 = 1;
 
 	// Select time quantum and set TSEG1
 	switch(pCanDriverObj->speedKbps)
 	{
 		case 1000:
-			MODULE_CAN->BTR1.B.TSEG1 = 0x4;
+			MODULE_CAN->BTR1.B.TSEG1 = 4;
 			quanta = 0.125;
 		break;
 		case 800:
-			MODULE_CAN->BTR1.B.TSEG1 = 0x6;
+			MODULE_CAN->BTR1.B.TSEG1 = 6;
 			quanta = 0.125;
 		break;
 		case 33:
 			//changes everything...
-			MODULE_CAN->BTR1.B.TSEG2 = 0x6;
-			MODULE_CAN->BTR1.B.TSEG1 = 0xf; //16 + 1 + 7 = 24
+			MODULE_CAN->BTR1.B.TSEG2 = 6;
+			MODULE_CAN->BTR1.B.TSEG1 = 15; //16 + 1 + 7 = 24
 			quanta = ((float)1000.0f / 33.3f) / 24.0f;
 		break;
 		default:
-			MODULE_CAN->BTR1.B.TSEG1 = 0xc;
+			MODULE_CAN->BTR1.B.TSEG1 = 12;
 			quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
 	}
 
@@ -231,7 +231,7 @@ bool impl_lw_can_start()
 		
 		0 -> single; the bus is sampled once; recommended for high speed buses (SAE class C).
 	*/
-	MODULE_CAN->BTR1.B.SAM = 0x1;
+	MODULE_CAN->BTR1.B.SAM = 1;
 
 	// Enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!).
 	MODULE_CAN->IER.U = 0xEF; //1110 1111
@@ -276,7 +276,7 @@ bool impl_lw_can_stop()
 		return false;
 
 	// Reset the module.
-	MODULE_CAN->MOD.B.RM = 0x1;
+	MODULE_CAN->MOD.B.RM = 1;
 	LWCAN_PERIPH_OFF();
 
 	MODULE_CAN->IER.U = 0;
