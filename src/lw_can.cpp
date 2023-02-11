@@ -52,8 +52,8 @@ static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 //===================================================================================================================
 typedef struct 
 {
-	uint32_t id;
-	uint32_t mask;
+	uint32_t id{0};
+	uint32_t mask{0};
 } lw_can_filter_t;
 
 typedef union
@@ -85,22 +85,6 @@ typedef struct
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	lw_can_driver_state state;								// Driver state flags.
-
-	void resetBusCounters()
-	{
-		counters.arbLostCnt = 0;
-		counters.busErrorCnt = 0;
-		counters.dataOverrunCnt = 0;
-		counters.errPassiveCnt = 0;
-		counters.busErrorCnt = 0;
-		counters.errataResendFrameCnt = 0;
-	}
-
-	void resetFilter()
-	{
-		filter.mask = 0;
-		filter.id = 0;
-	}
 } lw_can_driver_obj_t;
 
 lw_can_driver_obj_t* pCanDriverObj{nullptr}; 			// Driver object pointer.
@@ -147,6 +131,26 @@ void IRAM_ATTR ll_lw_can_clear_ir_and_ecc()
 	MODULE_CAN->RXERR.U = 0;
 	(void)MODULE_CAN->ECC;
 	(void)MODULE_CAN->IR.U;
+}
+
+void ll_lw_can_assign_gpio_matrix()
+{
+	// Configure TX pin
+	gpio_set_level(pCanDriverObj->txPin, 1);
+	gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
+	gpio_matrix_out(pCanDriverObj->txPin,CAN_TX_IDX,0,0);
+	gpio_pad_select_gpio(pCanDriverObj->txPin);
+
+	// Configure RX pin
+	gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
+	gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
+	gpio_pad_select_gpio(pCanDriverObj->rxPin);
+}
+
+void ll_lw_can_release_gpio_matrix()
+{
+	gpio_reset_pin(pCanDriverObj->rxPin);
+	gpio_reset_pin(pCanDriverObj->txPin);
 }
 
 void IRAM_ATTR ll_lw_can_read_frame_phy()
@@ -196,15 +200,14 @@ void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame)
 
 void IRAM_ATTR ll_lw_can_rst_from_isr()
 {
+	// @TODO: Check CMR for abort transmission later. Maybe worth to call before.
 	// Save registers.
 	uint32_t BTR0 = MODULE_CAN->BTR0.U;
 	uint32_t BTR1 = MODULE_CAN->BTR1.U;
 	uint32_t CDR = MODULE_CAN->CDR.U;
 	uint32_t IER = MODULE_CAN->IER.U;
 
-	// TODO: 
-	// maybe abort transmission via MODULE_CAN->CMR...
-
+	// Restart with register cleanup. 
 	ll_lw_can_disable_peripheral();
 	ll_lw_can_enable_peripheral();
 	ll_lw_can_reset_filter_reg();
@@ -289,33 +292,15 @@ bool ll_lw_can_start()
 	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
 		return false;
 
-	// Time quanta
-	double quanta;
+	double quanta;	// Time quanta.
 
-	// Enable module
-	ll_lw_can_enable_peripheral();
+	ll_lw_can_enable_peripheral();	// Enable peripheral.
+	ll_lw_can_assign_gpio_matrix();	// Assign GPIOs.
 
-	// Configure TX pin
-	gpio_set_level(pCanDriverObj->txPin, 1);
-	gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
-	gpio_matrix_out(pCanDriverObj->txPin,CAN_TX_IDX,0,0);
-	gpio_pad_select_gpio(pCanDriverObj->txPin);
+	MODULE_CAN->CDR.B.CAN_M = 1; 	// Pelican mode.
+	MODULE_CAN->BTR0.B.SJW = 3;		// Synchronization jump width is the same for all baud rates
+	MODULE_CAN->BTR1.B.TSEG2 = 1;	// TSEG2 is the same for all baud rates
 
-	// Configure RX pin
-	gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
-	gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
-	gpio_pad_select_gpio(pCanDriverObj->rxPin);
-
-	// Set to PELICAN mode
-	MODULE_CAN->CDR.B.CAN_M = 1;
-	
-	// Synchronization jump width is the same for all baud rates
-	MODULE_CAN->BTR0.B.SJW = 3;
-
-	// TSEG2 is the same for all baud rates
-	MODULE_CAN->BTR1.B.TSEG2 = 1;
-
-	// Select time quantum and set TSEG1
 	switch(pCanDriverObj->speedKbps)
 	{
 		case 1000:
@@ -335,35 +320,21 @@ bool ll_lw_can_start()
 		default:
 			MODULE_CAN->BTR1.B.TSEG1 = 12;
 			quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
+		break;
 	}
 
-	// Set baud rate prescaler - APB_CLK_FREQ should be 80M.
-	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
-
-	/* 
-		Set sampling
-
-		1 -> triple; the bus is sampled three times; recommended for low/medium speed buses     
-		(class A and B) where filtering spikes on the bus line is beneficial 
-		
-		0 -> single; the bus is sampled once; recommended for high speed buses (SAE class C).
-	*/
-	MODULE_CAN->BTR1.B.SAM = 1;
-
-	// Enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!).
-	MODULE_CAN->IER.U = 0xEF; //1110 1111
-	
-	// TODO: GTS REGISTER?
-
-	// Set to normal mode.
-	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
+	// Setup speed (BRP), sampling and OC mode.
+	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1; // Set BRP.
+	MODULE_CAN->BTR1.B.SAM = 1;	// Sampling (1 triple, 0 single).
+	MODULE_CAN->IER.U = 0xEF; 	//Enable all interrupts (except 4 whch appears to be baud scaler!).
+	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;	// Set to normal mode.
 
 	// Allocate queues.
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 	pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
 
 	// Reset counters.
-	pCanDriverObj->resetBusCounters();
+	pCanDriverObj->counters = {};
 	
 	// Install CAN interrupt service.
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
@@ -423,11 +394,9 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, u
 
 	pCanDriverObj = new lw_can_driver_obj_t();
 
-	// Setup pins.
+	// Setup pins and speed.
 	pCanDriverObj->txPin = txPin;
 	pCanDriverObj->rxPin = rxPin;
-
-	// Setup speed.
 	pCanDriverObj->speedKbps = speedKbps;
 
 	// Setup OC mode.
@@ -439,9 +408,6 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, u
 
 	// Reset states.
 	pCanDriverObj->state.U = 0;
-
-	// Reset filter.
-	pCanDriverObj->resetBusCounters();
 
 	return true;
 }
@@ -456,9 +422,8 @@ bool ll_lw_can_uninstall()
 	if (pCanDriverObj->state.B.isDriverStarted)
 		ll_lw_can_stop();
 
-	// Reset pins.
-	gpio_reset_pin(pCanDriverObj->rxPin);
-	gpio_reset_pin(pCanDriverObj->txPin);
+	// Release gpio.
+	ll_lw_can_release_gpio_matrix();
 
 	// Delete driver object.
 	delete pCanDriverObj;
