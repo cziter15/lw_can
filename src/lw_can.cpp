@@ -112,7 +112,7 @@ void IRAM_ATTR lw_can_interrupt(void *arg);
 //===================================================================================================================
 // Spinlock free / low level functions.
 //===================================================================================================================
-void IRAM_ATTR ll_reset_filter_reg()
+void IRAM_ATTR ll_lw_can_reset_filter_reg()
 {
 	MODULE_CAN->MOD.B.AFM = 0;
 	MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xff;
@@ -125,7 +125,7 @@ void IRAM_ATTR ll_reset_filter_reg()
 	MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
 }
 
-void IRAM_ATTR ll_enable_peripheral()
+void IRAM_ATTR ll_lw_can_enable_peripheral()
 {
 	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
@@ -133,7 +133,7 @@ void IRAM_ATTR ll_enable_peripheral()
 	MODULE_CAN->IER.U = 0;
 }
 
-void IRAM_ATTR ll_disable_peripheral()
+void IRAM_ATTR ll_lw_can_disable_peripheral()
 {
 	MODULE_CAN->MOD.B.RM = 1;
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
@@ -141,7 +141,7 @@ void IRAM_ATTR ll_disable_peripheral()
 	MODULE_CAN->IER.U = 0;
 }
 
-void IRAM_ATTR ll_clear_ir_and_ecc()
+void IRAM_ATTR ll_lw_can_clear_ir_and_ecc()
 {
 	MODULE_CAN->TXERR.U = 0;
 	MODULE_CAN->RXERR.U = 0;
@@ -149,7 +149,7 @@ void IRAM_ATTR ll_clear_ir_and_ecc()
 	(void)MODULE_CAN->IR.U;
 }
 
-void IRAM_ATTR ll_can_read_frame_phy()
+void IRAM_ATTR ll_lw_can_read_frame_phy()
 {
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
@@ -175,7 +175,7 @@ void IRAM_ATTR ll_can_read_frame_phy()
 	MODULE_CAN->CMR.B.RRB = 1;
 }
 
-void IRAM_ATTR ll_write_frame_phy(const lw_can_frame_t& frame) 
+void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame) 
 {
 	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = frame.FIR.U;
 	if (frame.FIR.B.FF == LWCAN_FRAME_STD) 
@@ -205,10 +205,10 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	// TODO: 
 	// maybe abort transmission via MODULE_CAN->CMR...
 
-	ll_disable_peripheral();
-	ll_enable_peripheral();
-	ll_reset_filter_reg();
-	ll_clear_ir_and_ecc();
+	ll_lw_can_disable_peripheral();
+	ll_lw_can_enable_peripheral();
+	ll_lw_can_reset_filter_reg();
+	ll_lw_can_clear_ir_and_ecc();
 
 	// Restore registers.
 	MODULE_CAN->BTR0.U = BTR0;
@@ -261,7 +261,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 		// Requeue the frame if we broke sending.
 		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
 		{
-			ll_write_frame_phy(pCanDriverObj->savedFrame);
+			ll_lw_can_write_frame_phy(pCanDriverObj->savedFrame);
 			++pCanDriverObj->counters.errataResendFrameCnt;
 		}
 		return;
@@ -274,7 +274,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
 		{
 			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, nullptr);
-			ll_write_frame_phy(frame);
+			ll_lw_can_write_frame_phy(frame);
 		}
 		else 
 		{
@@ -293,7 +293,7 @@ bool ll_lw_can_start()
 	double quanta;
 
 	// Enable module
-	ll_enable_peripheral();
+	ll_lw_can_enable_peripheral();
 
 	// Configure TX pin
 	gpio_set_level(pCanDriverObj->txPin, 1);
@@ -369,8 +369,8 @@ bool ll_lw_can_start()
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
 
 	// Clear error counters and current interrupt flag.
-	ll_reset_filter_reg();
-	ll_clear_ir_and_ecc();
+	ll_lw_can_reset_filter_reg();
+	ll_lw_can_clear_ir_and_ecc();
 
 	// Set state.
 	pCanDriverObj->state.B.isDriverStarted = true;
@@ -387,8 +387,8 @@ bool ll_lw_can_stop()
 	if (!pCanDriverObj || !pCanDriverObj->state.B.isDriverStarted)
 		return false;
 
-	// Turn off module.
-	LWCAN_PERIPH_OFF();
+	// Turn off modkule.
+	ll_lw_can_stop();
 
 	// Remove interrupt and semaphore.
 	esp_intr_free(pCanDriverObj->intrHandle);
@@ -528,7 +528,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 		else
 		{
 			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = true;
-			ll_write_frame_phy(frame);
+			ll_lw_can_write_frame_phy(frame);
 			frameQueued = true;
 		}
 	}
