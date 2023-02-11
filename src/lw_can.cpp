@@ -110,9 +110,46 @@ lw_can_driver_obj_t* pCanDriverObj{nullptr}; 			// Driver object pointer.
 //===================================================================================================================
 void IRAM_ATTR lw_can_interrupt(void *arg);
 //===================================================================================================================
-// Spinlock free functions.
+// Spinlock free / low level functions.
 //===================================================================================================================
-void IRAM_ATTR impl_lw_can_read_frame_phy()
+void IRAM_ATTR ll_reset_filter_reg()
+{
+	MODULE_CAN->MOD.B.AFM = 0;
+	MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.CODE[3] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.MASK[0] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.MASK[1] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xff;
+	MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
+}
+
+void IRAM_ATTR ll_enable_peripheral()
+{
+	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
+	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
+	MODULE_CAN->MOD.B.RM = 1;
+	MODULE_CAN->IER.U = 0;
+}
+
+void IRAM_ATTR ll_disable_peripheral()
+{
+	MODULE_CAN->MOD.B.RM = 1;
+	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
+	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
+	MODULE_CAN->IER.U = 0;
+}
+
+void IRAM_ATTR ll_clear_ir_and_ecc()
+{
+	MODULE_CAN->TXERR.U = 0;
+	MODULE_CAN->RXERR.U = 0;
+	(void)MODULE_CAN->ECC;
+	(void)MODULE_CAN->IR.U;
+}
+
+void IRAM_ATTR ll_can_read_frame_phy()
 {
 	lw_can_frame_t frame;
 	BaseType_t xHigherPriorityTaskWoken;
@@ -138,7 +175,7 @@ void IRAM_ATTR impl_lw_can_read_frame_phy()
 	MODULE_CAN->CMR.B.RRB = 1;
 }
 
-void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t& frame) 
+void IRAM_ATTR ll_write_frame_phy(const lw_can_frame_t& frame) 
 {
 	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = frame.FIR.U;
 	if (frame.FIR.B.FF == LWCAN_FRAME_STD) 
@@ -157,7 +194,96 @@ void IRAM_ATTR impl_write_frame_phy(const lw_can_frame_t& frame)
 	MODULE_CAN->CMR.B.TR = 1;
 }
 
-bool impl_lw_can_start()
+void IRAM_ATTR ll_lw_can_rst_from_isr()
+{
+	// Save registers.
+	uint32_t BTR0 = MODULE_CAN->BTR0.U;
+	uint32_t BTR1 = MODULE_CAN->BTR1.U;
+	uint32_t CDR = MODULE_CAN->CDR.U;
+	uint32_t IER = MODULE_CAN->IER.U;
+
+	// TODO: 
+	// maybe abort transmission via MODULE_CAN->CMR...
+
+	ll_disable_peripheral();
+	ll_enable_peripheral();
+	ll_reset_filter_reg();
+	ll_clear_ir_and_ecc();
+
+	// Restore registers.
+	MODULE_CAN->BTR0.U = BTR0;
+	MODULE_CAN->BTR1.U = BTR1;
+	MODULE_CAN->IER.U = IER;
+	MODULE_CAN->CDR.U = CDR;
+
+	// Release reset mode.
+	MODULE_CAN->MOD.B.RM = 0;
+}
+
+void IRAM_ATTR ll_lw_can_interrupt()
+{
+	// Read and clear interrupts.
+	uint32_t interrupt {MODULE_CAN->IR.U};
+
+	// Handle counters.
+	if (interrupt & LWCAN_IRQ_ARB_LOST)
+		++pCanDriverObj->counters.arbLostCnt;
+	
+	if (interrupt & LWCAN_IRQ_DATA_OVERRUN)
+		++pCanDriverObj->counters.dataOverrunCnt;
+
+	if (interrupt & LWCAN_IRQ_WAKEUP)
+		++pCanDriverObj->counters.wakeUpCnt;
+
+	if (interrupt & LWCAN_IRQ_ERR_PASSIVE)
+		++pCanDriverObj->counters.errPassiveCnt;
+
+	if (interrupt & LWCAN_IRQ_BUS_ERR)
+		++pCanDriverObj->counters.busErrorCnt;
+
+	// Read frames from buffer.
+	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
+	{
+		ll_lw_can_read_frame_phy();
+	}
+
+	// Handle error interrupts.
+	if (interrupt & ( LWCAN_IRQ_ERR				//0x4
+					| LWCAN_IRQ_DATA_OVERRUN	//0x8
+					| LWCAN_IRQ_WAKEUP			//0x10
+					| LWCAN_IRQ_ERR_PASSIVE		//0x20
+					| LWCAN_IRQ_BUS_ERR			//0x80
+	))
+	{
+		// Reset module but preserve registers.
+		ll_lw_can_rst_from_isr();
+
+		// Requeue the frame if we broke sending.
+		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
+		{
+			ll_write_frame_phy(pCanDriverObj->savedFrame);
+			++pCanDriverObj->counters.errataResendFrameCnt;
+		}
+		return;
+	}
+
+	// Handle sending in case there is no error.
+	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
+	{
+		lw_can_frame_t frame;
+		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
+		{
+			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, nullptr);
+			ll_write_frame_phy(frame);
+		}
+		else 
+		{
+			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = false;
+		}
+	}
+}
+
+bool ll_lw_can_start()
 {
 	// If not installed or started, return false.
 	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
@@ -167,7 +293,7 @@ bool impl_lw_can_start()
 	double quanta;
 
 	// Enable module
-	LWCAN_PERIPH_ON();
+	ll_enable_peripheral();
 
 	// Configure TX pin
 	gpio_set_level(pCanDriverObj->txPin, 1);
@@ -226,9 +352,8 @@ bool impl_lw_can_start()
 
 	// Enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!).
 	MODULE_CAN->IER.U = 0xEF; //1110 1111
-
-	// Set acceptance filter.
-	LWCAN_CLEAR_MBX_CTRL();
+	
+	// TODO: GTS REGISTER?
 
 	// Set to normal mode.
 	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
@@ -244,7 +369,8 @@ bool impl_lw_can_start()
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
 
 	// Clear error counters and current interrupt flag.
-	LWCAN_CLEAR_IR_AND_ECC();
+	ll_reset_filter_reg();
+	ll_clear_ir_and_ecc();
 
 	// Set state.
 	pCanDriverObj->state.B.isDriverStarted = true;
@@ -255,7 +381,7 @@ bool impl_lw_can_start()
 	return true;
 }
 
-bool impl_lw_can_stop()
+bool ll_lw_can_stop()
 {
 	// If not installed or not started, return false.
 	if (!pCanDriverObj || !pCanDriverObj->state.B.isDriverStarted)
@@ -277,7 +403,7 @@ bool impl_lw_can_stop()
 	return true;
 }
 
-bool impl_lw_can_set_filter(uint32_t id, uint32_t mask)
+bool ll_lw_can_set_filter(uint32_t id, uint32_t mask)
 {
 	// If not installed or already started, return false.
 	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
@@ -289,7 +415,7 @@ bool impl_lw_can_set_filter(uint32_t id, uint32_t mask)
 	return true;
 }
 
-bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
+bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
 {
 	// If already installed, return false.
 	if (pCanDriverObj)
@@ -320,7 +446,7 @@ bool impl_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps,
 	return true;
 }
 
-bool impl_lw_can_uninstall()
+bool ll_lw_can_uninstall()
 {
 	// If not installed, return false.
 	if (!pCanDriverObj)
@@ -328,7 +454,7 @@ bool impl_lw_can_uninstall()
 
 	// Stop driver if working.
 	if (pCanDriverObj->state.B.isDriverStarted)
-		impl_lw_can_stop();
+		ll_lw_can_stop();
 
 	// Reset pins.
 	gpio_reset_pin(pCanDriverObj->rxPin);
@@ -340,102 +466,13 @@ bool impl_lw_can_uninstall()
 
 	return true;
 }
-
-void IRAM_ATTR impl_lw_can_rst_from_isr()
-{
-	// Save registers.
-	uint32_t BTR0 = MODULE_CAN->BTR0.U;
-	uint32_t BTR1 = MODULE_CAN->BTR1.U;
-	uint32_t CDR = MODULE_CAN->CDR.U;
-	uint32_t IER = MODULE_CAN->IER.U;
-
-	// Turn off -> Turn on.
-	LWCAN_PERIPH_OFF()
-	LWCAN_PERIPH_ON()
-
-	// Restore registers.
-	LWCAN_CLEAR_MBX_CTRL()
-	MODULE_CAN->BTR0.U = BTR0;
-	MODULE_CAN->BTR1.U = BTR1;
-	MODULE_CAN->IER.U = IER;
-	MODULE_CAN->CDR.U = CDR;
-
-	// Clear error counters and interrupts.
-	LWCAN_CLEAR_IR_AND_ECC();
-
-	// Release reset mode.
-	MODULE_CAN->MOD.B.RM = 0;
-}
-
-void IRAM_ATTR impl_lw_can_interrupt()
-{
-	// Read and clear interrupts.
-	uint32_t interrupt {MODULE_CAN->IR.U};
-
-	// Handle counters.
-	if (interrupt & LWCAN_IRQ_ARB_LOST)
-		++pCanDriverObj->counters.arbLostCnt;
-	
-	if (interrupt & LWCAN_IRQ_DATA_OVERRUN)
-		++pCanDriverObj->counters.dataOverrunCnt;
-
-	if (interrupt & LWCAN_IRQ_WAKEUP)
-		++pCanDriverObj->counters.wakeUpCnt;
-
-	if (interrupt & LWCAN_IRQ_ERR_PASSIVE)
-		++pCanDriverObj->counters.errPassiveCnt;
-
-	if (interrupt & LWCAN_IRQ_BUS_ERR)
-		++pCanDriverObj->counters.busErrorCnt;
-
-	// Read frames from buffer.
-	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
-	{
-		impl_lw_can_read_frame_phy();
-	}
-
-	// Handle error interrupts.
-	if (interrupt & ( LWCAN_IRQ_ERR				//0x4
-					| LWCAN_IRQ_DATA_OVERRUN	//0x8
-					| LWCAN_IRQ_WAKEUP			//0x10
-					| LWCAN_IRQ_ERR_PASSIVE		//0x20
-					| LWCAN_IRQ_BUS_ERR			//0x80
-	))
-	{
-		// Reset module but preserve registers.
-		impl_lw_can_rst_from_isr();
-
-		// Requeue the frame if we broke sending.
-		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
-		{
-			impl_write_frame_phy(pCanDriverObj->savedFrame);
-			++pCanDriverObj->counters.errataResendFrameCnt;
-		}
-		return;
-	}
-
-	// Handle sending in case there is no error.
-	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
-	{
-		lw_can_frame_t frame;
-		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
-		{
-			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, nullptr);
-			impl_write_frame_phy(frame);
-		}
-		else 
-		{
-			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = false;
-		}
-	}
-}
 //===================================================================================================================
 // Wrapper routines.
 //===================================================================================================================
 void IRAM_ATTR lw_can_interrupt(void* arg)
 {
 	LWCAN_ENTER_CRITICAL_ISR();
-	impl_lw_can_interrupt();
+	ll_lw_can_interrupt();
 	LWCAN_EXIT_CRITICAL_ISR();
 }
 //===================================================================================================================
@@ -446,7 +483,7 @@ bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint
 {
 	bool driverInstalled;
 	LWCAN_ENTER_CRITICAL();
-	driverInstalled = impl_lw_can_install(rxPin, txPin, speedKbps, rxQueueSize, txQueueSize, ocMode);
+	driverInstalled = ll_lw_can_install(rxPin, txPin, speedKbps, rxQueueSize, txQueueSize, ocMode);
 	LWCAN_EXIT_CRITICAL();
 	return driverInstalled;
 }
@@ -455,7 +492,7 @@ bool lw_can_uninstall()
 {
 	bool driverUninstalled;
 	LWCAN_ENTER_CRITICAL();
-	driverUninstalled = impl_lw_can_uninstall();
+	driverUninstalled = ll_lw_can_uninstall();
 	LWCAN_EXIT_CRITICAL();
 	return driverUninstalled;
 }
@@ -464,7 +501,7 @@ bool lw_can_start()
 {
 	bool driverStarted;
 	LWCAN_ENTER_CRITICAL();
-	driverStarted = impl_lw_can_start();
+	driverStarted = ll_lw_can_start();
 	LWCAN_EXIT_CRITICAL();
 	return driverStarted;
 }
@@ -473,7 +510,7 @@ bool lw_can_stop()
 {
 	bool driverStopped;
 	LWCAN_ENTER_CRITICAL();
-	driverStopped = impl_lw_can_stop();
+	driverStopped = ll_lw_can_stop();
 	LWCAN_EXIT_CRITICAL();
 	return driverStopped;
 }
@@ -491,7 +528,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 		else
 		{
 			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = true;
-			impl_write_frame_phy(frame);
+			ll_write_frame_phy(frame);
 			frameQueued = true;
 		}
 	}
@@ -512,7 +549,7 @@ bool lw_can_set_filter(uint32_t id, uint32_t mask)
 {
 	bool filterSetStatus;
 	LWCAN_ENTER_CRITICAL();
-	filterSetStatus = impl_lw_can_set_filter(id, mask);
+	filterSetStatus = ll_lw_can_set_filter(id, mask);
 	LWCAN_EXIT_CRITICAL();
 	return filterSetStatus;
 }
