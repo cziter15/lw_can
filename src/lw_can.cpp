@@ -359,7 +359,7 @@ bool ll_lw_can_stop()
 		return false;
 
 	// Turn off modkule.
-	ll_lw_can_stop();
+	ll_lw_can_disable_peripheral();
 
 	// Remove interrupt and semaphore.
 	esp_intr_free(pCanDriverObj->intrHandle);
