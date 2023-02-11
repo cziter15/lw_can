@@ -291,15 +291,21 @@ bool ll_lw_can_start()
 	// If not installed or started, return false.
 	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
 		return false;
+	
+	// Time quanta.
+	double quanta;
 
-	double quanta;	// Time quanta.
+	// Enable peripheral.
+	ll_lw_can_enable_peripheral();
+	// Assign GPIOs.
+	ll_lw_can_assign_gpio_matrix();
 
-	ll_lw_can_enable_peripheral();	// Enable peripheral.
-	ll_lw_can_assign_gpio_matrix();	// Assign GPIOs.
-
-	MODULE_CAN->CDR.B.CAN_M = 1; 	// Pelican mode.
-	MODULE_CAN->BTR0.B.SJW = 3;		// Synchronization jump width is the same for all baud rates
-	MODULE_CAN->BTR1.B.TSEG2 = 1;	// TSEG2 is the same for all baud rates
+	// Set CAN Mode.
+	MODULE_CAN->CDR.B.CAN_M = 1;
+	// Synchronization jump width is the same for all baud rates
+	MODULE_CAN->BTR0.B.SJW = 3;		
+	// TSEG2 is the same for all baud rates
+	MODULE_CAN->BTR1.B.TSEG2 = 1;
 
 	switch(pCanDriverObj->speedKbps)
 	{
@@ -323,11 +329,12 @@ bool ll_lw_can_start()
 		break;
 	}
 
-	// Setup speed (BRP), sampling and OC mode.
-	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1; // Set BRP.
-	MODULE_CAN->BTR1.B.SAM = 1;	// Sampling (1 triple, 0 single).
-	MODULE_CAN->IER.U = 0xEF; 	//Enable all interrupts (except 4 whch appears to be baud scaler!).
-	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;	// Set to normal mode.
+	 // Set BRP.
+	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
+	// Sampling (1 triple, 0 single).
+	MODULE_CAN->BTR1.B.SAM = 1;	
+	// Set OC mode.
+	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
 
 	// Allocate queues.
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
@@ -339,15 +346,19 @@ bool ll_lw_can_start()
 	// Install CAN interrupt service.
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
 
-	// Clear error counters and current interrupt flag.
+	// Reset filter.
 	ll_lw_can_reset_filter_reg();
+	// Reset interrupt and error counters.
 	ll_lw_can_clear_ir_and_ecc();
 
-	// Set state.
-	pCanDriverObj->state.B.isDriverStarted = true;
+	// Enable interrupts.
+	MODULE_CAN->IER.U = 0xEF;
 
 	// Showtime. Release Reset Mode.
 	MODULE_CAN->MOD.B.RM = 0;
+
+	// Set driver state.
+	pCanDriverObj->state.B.isDriverStarted = true;
 
 	return true;
 }
