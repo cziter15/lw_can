@@ -295,10 +295,10 @@ bool ll_lw_can_start()
 	// Time quanta.
 	double quanta;
 
-	// Enable peripheral.
-	ll_lw_can_enable_peripheral();
 	// Assign GPIOs.
 	ll_lw_can_assign_gpio_matrix();
+	// Enable peripheral.
+	ll_lw_can_enable_peripheral();
 
 	// Set CAN Mode.
 	MODULE_CAN->CDR.B.CAN_M = 1;
