@@ -356,7 +356,7 @@ bool ll_lw_can_start()
 	pCanDriverObj->counters = {};
 	
 	// Install CAN interrupt service.
-	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
+	esp_intr_alloc(ETS_CAN_INTR_SOURCE, ESP_INTR_FLAG_IRAM, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
 
 	// Showtime. Release Reset Mode.
 	MODULE_CAN->MOD.B.RM = 0;
