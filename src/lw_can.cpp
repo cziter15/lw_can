@@ -336,6 +336,14 @@ bool ll_lw_can_start()
 	// Set OC mode.
 	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
 
+	// Reset filter.
+	ll_lw_can_reset_filter_reg();
+	// Reset interrupt and error counters.
+	ll_lw_can_clear_ir_and_ecc();
+
+	// Enable interrupts.
+	MODULE_CAN->IER.U = 0xEF;
+
 	// Allocate queues.
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 	pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
@@ -345,14 +353,6 @@ bool ll_lw_can_start()
 	
 	// Install CAN interrupt service.
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, 0, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
-
-	// Reset filter.
-	ll_lw_can_reset_filter_reg();
-	// Reset interrupt and error counters.
-	ll_lw_can_clear_ir_and_ecc();
-
-	// Enable interrupts.
-	MODULE_CAN->IER.U = 0xEF;
 
 	// Showtime. Release Reset Mode.
 	MODULE_CAN->MOD.B.RM = 0;
