@@ -33,19 +33,19 @@
 #include <stdint.h>
 #include "driver/gpio.h"
 
-typedef enum 
+enum lw_can_frame_format_t
 {
 	LWCAN_FRAME_STD = 0, 							// Standard frame, using 11 bit identifer. 
 	LWCAN_FRAME_EXT= 1 								// Extended frame, using 29 bit identifer. 
-} lw_can_frame_format_t;
+};
 
-typedef enum 
+enum lw_can_rtr_t 
 {
 	LWCAN_NO_RTR = 0, 								// No RTR frame. 
 	LWCAN_RTR 	 = 1 								// RTR frame. 
-} lw_can_rtr_t;
+};
 
-typedef union
+union CAN_FIR_t
 {
 	uint32_t U;										// Unsigned access 
 	 struct 
@@ -56,10 +56,10 @@ typedef union
 		lw_can_frame_format_t 	FF:1;				// [7:7] Frame Format, see# lw_can_frame_format_t
 		unsigned int 			reserved_24:24;		// Reserved 
 	} B;
-} CAN_FIR_t;
+};
 
 
-typedef struct 
+struct lw_can_frame_t
 {
 	CAN_FIR_t	FIR;								// Frame information record
 	uint32_t 	MsgID;								// Message ID 
@@ -68,15 +68,15 @@ typedef struct
 		uint8_t u8[8];								// Payload byte access
 		uint32_t u32[2];							// Payload u32 access
 	} data;
-} lw_can_frame_t;
+};
 
-typedef enum 
+enum lw_can_filter_mode_t 
 {
-	LWCAN_FILTER_DUAL = 0, 										// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
-	LWCAN_FILTER_SINGLE = 1 										// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
-} lw_can_filter_mode_t;
+	LWCAN_FILTER_DUAL = 0, 							// The dual acceptance filter option is enabled (two filters, each with the length of 16 bit are active) 
+	LWCAN_FILTER_SINGLE = 1 						// The single acceptance filter option is enabled (one filter with the length of 32 bit is active) 
+};
 
-typedef struct 
+struct CAN_filter_t
 {
 	lw_can_filter_mode_t 	FM:1;					// [0:0] Filter Mode 
 	uint8_t 				ACR0;					// Acceptance Code Register ACR0 
@@ -87,7 +87,7 @@ typedef struct
 	uint8_t 				AMR1;					// Acceptance Mask Register AMR1 
 	uint8_t 				AMR2;					// Acceptance Mask Register AMR2 
 	uint8_t 				AMR3;					// Acceptance Mask Register AMR3 
-} CAN_filter_t;
+};
 
 
 #define MODULE_CAN									((volatile CAN_Module_t    *)0x3ff6b000)
@@ -108,7 +108,7 @@ typedef struct
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[2] = ((x) >> 5);	\
 													MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.ID[3] = ((x) << 3);	\
 
-typedef enum  
+enum lw_can_irq_t
 {
 	LWCAN_IRQ_RX =				BIT(0),				// RX Interrupt 
 	LWCAN_IRQ_TX =				BIT(1),				// TX Interrupt 
@@ -118,17 +118,17 @@ typedef enum
 	LWCAN_IRQ_ERR_PASSIVE =		BIT(5),				// Passive Error Interrupt 
 	LWCAN_IRQ_ARB_LOST =		BIT(6),				// Arbitration lost interrupt 
 	LWCAN_IRQ_BUS_ERR =			BIT(7),				// Bus error Interrupt 
-} lw_can_irq_t;
+};
 
-typedef enum  
+enum lw_can_ocmode_t
 {
 	LWCAN_OC_BOM =				0b00,				// bi-phase output mode 
 	LWCAN_OC_TOM =				0b01,				// test output mode 
 	LWCAN_OC_NOM =				0b10,				// normal output mode 
 	LWCAN_OC_COM =				0b11,				// clock output mode 
-} lw_can_ocmode_t;
+};
 
-typedef struct 
+struct CAN_Module_t
 {
 	union
 	{
@@ -346,9 +346,9 @@ typedef struct
 		} B;
 	} CDR;
 	uint32_t IRAM[2];
-} CAN_Module_t;
+};
 
-typedef struct
+struct lw_can_bus_counters
 {
 	uint32_t arbLostCnt{0};							// Arbitration lost counter.
 	uint32_t dataOverrunCnt{0};						// Data overrun counter.
@@ -356,4 +356,4 @@ typedef struct
 	uint32_t errPassiveCnt{0};						// Error passive counter.
 	uint32_t busErrorCnt{0};						// Bus error counter.
 	uint32_t errataResendFrameCnt{0};				// RXFrame errata error counter.
-} lw_can_bus_counters;
+};
