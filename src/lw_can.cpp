@@ -205,6 +205,7 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	uint32_t BTR0 = MODULE_CAN->BTR0.U;
 	uint32_t BTR1 = MODULE_CAN->BTR1.U;
 	uint32_t CDR = MODULE_CAN->CDR.U;
+	uint32_t CMR = MODULE_CAN->CMR.U;
 	uint32_t IER = MODULE_CAN->IER.U;
 
 	// Restart with register cleanup. 
@@ -216,8 +217,9 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	// Restore registers.
 	MODULE_CAN->BTR0.U = BTR0;
 	MODULE_CAN->BTR1.U = BTR1;
-	MODULE_CAN->IER.U = IER;
 	MODULE_CAN->CDR.U = CDR;
+	MODULE_CAN->CMR.U = CMR;
+	MODULE_CAN->IER.U = IER;
 
 	// Release reset mode.
 	MODULE_CAN->MOD.B.RM = 0;
@@ -302,6 +304,8 @@ bool ll_lw_can_start()
 
 	// Set CAN Mode.
 	MODULE_CAN->CDR.B.CAN_M = 1;
+	// Never go to sleep.
+	MODULE_CAN->CMR.B.GTS = 0;
 	// Synchronization jump width is the same for all baud rates
 	MODULE_CAN->BTR0.B.SJW = 3;		
 	// TSEG2 is the same for all baud rates
