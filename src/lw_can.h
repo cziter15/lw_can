@@ -38,13 +38,13 @@
 
 	@param rxPin CAN RX pin.
 	@param txPin CAN TX pin.
-	@param speedKbps CAN speed in kbps.
+	@param busTiming CAN BUS timing reference structure.
 	@param rxQueueSize CAN RX queue size.
 	@param txQueueSize CAN TX queue size.
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t ocMode = LWCAN_OC_NOM);
+extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t ocMode = LWCAN_OC_NOM);
 
 /*
 	This function is used to set CAN bus filter for incomming message.

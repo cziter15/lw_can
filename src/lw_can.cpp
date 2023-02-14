@@ -50,13 +50,13 @@ static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
-typedef struct 
+struct lw_can_filter_t
 {
 	uint32_t id{0};
 	uint32_t mask{0};
-} lw_can_filter_t;
+};
 
-typedef union
+union lw_can_driver_state
 {
 	uint8_t U;												// Unsigned access 
 	struct 
@@ -64,15 +64,17 @@ typedef union
 		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
 		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
-} lw_can_driver_state;
+};
 
-typedef struct
+struct lw_can_driver_obj_t
 {
 	lw_can_filter_t filter;									// Filter settings.
 
 	gpio_num_t txPin;										// CAN TX pin.
 	gpio_num_t rxPin;										// CAN RX pin.
-	uint16_t speedKbps;										// CAN speed in kbps.
+
+	lw_can_bus_timing_t	busTiming;							// CAN bus timing
+
 	uint8_t ocMode;											// CAN output control mode.
 
 	uint8_t rxQueueSize;									// CAN RX queue size.
@@ -85,7 +87,7 @@ typedef struct
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 	lw_can_driver_state state;								// Driver state flags.
-} lw_can_driver_obj_t;
+};
 
 lw_can_driver_obj_t* pCanDriverObj{nullptr}; 			// Driver object pointer.
 
@@ -303,40 +305,16 @@ bool ll_lw_can_start()
 	ll_lw_can_enable_peripheral();
 
 	// Set CAN Mode.
-	MODULE_CAN->CDR.B.CAN_M = 1;
-	// Never go to sleep.
 	MODULE_CAN->CMR.B.GTS = 0;
-	// Synchronization jump width is the same for all baud rates
-	MODULE_CAN->BTR0.B.SJW = 3;		
-	// TSEG2 is the same for all baud rates
-	MODULE_CAN->BTR1.B.TSEG2 = 1;
+	MODULE_CAN->CDR.B.CAN_M = 1;
 
-	switch(pCanDriverObj->speedKbps)
-	{
-		case 1000:
-			MODULE_CAN->BTR1.B.TSEG1 = 4;
-			quanta = 0.125;
-		break;
-		case 800:
-			MODULE_CAN->BTR1.B.TSEG1 = 6;
-			quanta = 0.125;
-		break;
-		case 33:
-			//changes everything...
-			MODULE_CAN->BTR1.B.TSEG2 = 6;
-			MODULE_CAN->BTR1.B.TSEG1 = 15; //16 + 1 + 7 = 24
-			quanta = ((float)1000.0f / 33.3f) / 24.0f;
-		break;
-		default:
-			MODULE_CAN->BTR1.B.TSEG1 = 12;
-			quanta = ((float)1000.0f / (float)pCanDriverObj->speedKbps) / 16.0f;
-		break;
-	}
+	// Set timing.
+	MODULE_CAN->BTR0.B.SJW = pCanDriverObj->busTiming.sjw - 1;
+	MODULE_CAN->BTR0.B.BRP = (pCanDriverObj->busTiming.prescaler / 2) - 1;
+	MODULE_CAN->BTR1.B.TSEG1 = pCanDriverObj->busTiming.tseg1 - 1;
+	MODULE_CAN->BTR1.B.TSEG2 = pCanDriverObj->busTiming.tseg2 - 1;
+	MODULE_CAN->BTR1.B.SAM = 1;
 
-	 // Set BRP.
-	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * quanta) / 2) - 1)/1000000)-1;
-	// Sampling (1 triple, 0 single).
-	MODULE_CAN->BTR1.B.SAM = 1;	
 	// Set OC mode.
 	MODULE_CAN->OCR.B.OCMODE = pCanDriverObj->ocMode;
 
@@ -401,7 +379,7 @@ bool ll_lw_can_set_filter(uint32_t id, uint32_t mask)
 	return true;
 }
 
-bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
+bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
 {
 	// If already installed, return false.
 	if (pCanDriverObj)
@@ -409,10 +387,12 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, u
 
 	pCanDriverObj = new lw_can_driver_obj_t();
 
-	// Setup pins and speed.
+	// Setup pins.
 	pCanDriverObj->txPin = txPin;
 	pCanDriverObj->rxPin = rxPin;
-	pCanDriverObj->speedKbps = speedKbps;
+	
+	// Set timing.
+	pCanDriverObj->busTiming = busTiming;
 
 	// Setup OC mode.
 	pCanDriverObj->ocMode = ocMode;
@@ -459,11 +439,11 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 // PUBLIC API
 // Remember to use spinlock properly.
 //===================================================================================================================
-bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, uint16_t speedKbps, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
+bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t ocMode)
 {
 	bool driverInstalled;
 	LWCAN_ENTER_CRITICAL();
-	driverInstalled = ll_lw_can_install(rxPin, txPin, speedKbps, rxQueueSize, txQueueSize, ocMode);
+	driverInstalled = ll_lw_can_install(rxPin, txPin, busTiming, rxQueueSize, txQueueSize, ocMode);
 	LWCAN_EXIT_CRITICAL();
 	return driverInstalled;
 }

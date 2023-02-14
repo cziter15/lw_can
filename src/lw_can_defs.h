@@ -357,3 +357,11 @@ struct lw_can_bus_counters
 	uint32_t busErrorCnt{0};						// Bus error counter.
 	uint32_t errataResendFrameCnt{0};				// RXFrame errata error counter.
 };
+
+struct lw_can_bus_timing_t
+{
+	uint16_t prescaler;
+	uint8_t tseg1;
+	uint8_t	tseg2;
+	uint8_t sjw;
+};
