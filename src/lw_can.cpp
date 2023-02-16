@@ -30,12 +30,10 @@
 #include "lw_can.h"
 #include <stdint.h>
 #include <math.h>
-#include <byteswap.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "soc/dport_reg.h"
 
 //===================================================================================================================
