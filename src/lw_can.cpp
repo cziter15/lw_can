@@ -61,6 +61,7 @@ union lw_can_driver_state
 	uint8_t U;												// Unsigned access 
 	struct 
 	{
+		bool needReset : 1;									// Reset flag
 		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
 		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
@@ -82,7 +83,9 @@ struct lw_can_driver_obj_t
 	QueueHandle_t rxQueue;									// CAN RX queue handle.
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
-	lw_can_frame_t savedFrame;								// Temporary frame to workaround chip bugs.
+	xTaskHandle txTask;										// CAN TX task.
+
+	lw_can_frame_t cachedFrame;								// Cached frame to retry.
 	lw_can_bus_counters counters;							// Statistics counters.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
@@ -181,7 +184,7 @@ void IRAM_ATTR ll_lw_can_read_frame_phy()
 	MODULE_CAN->CMR.B.RRB = 1;
 }
 
-void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame) 
+void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame, bool cacheFrame = true) 
 {
 	MODULE_CAN->MBX_CTRL.FCTRL.FIR.U = frame.FIR.U;
 	if (frame.FIR.B.FF == LWCAN_FRAME_STD) 
@@ -196,11 +199,14 @@ void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame)
 		for (uint8_t thisByte = 0; thisByte < frame.FIR.B.DLC; ++thisByte)
 			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = frame.data.u8[thisByte];
 	}
-	pCanDriverObj->savedFrame = frame; // need to cache to workaround errata bug.
+
+	if (cacheFrame)
+		pCanDriverObj->cachedFrame = frame;
+
 	MODULE_CAN->CMR.B.TR = 1;
 }
 
-void IRAM_ATTR ll_lw_can_rst_from_isr()
+void ll_lw_can_rst_from_isr()
 {
 	// @TODO: Check CMR for abort transmission later. Maybe worth to call before.
 	// Save registers.
@@ -227,6 +233,51 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	MODULE_CAN->MOD.B.RM = 0;
 }
 
+void lw_can_tx_task(void* arg)
+{
+	uint32_t shortDelay = pdMS_TO_TICKS(LW_CAN_SHORT_RESET_DELAY_MS);
+	uint32_t resetDelay = shortDelay;
+	uint8_t maxResets = 10;
+
+	while (true)
+	{	
+		LWCAN_ENTER_CRITICAL();
+		if (pCanDriverObj->state.B.needReset)
+		{
+			pCanDriverObj->state.B.needReset = false;
+
+			// Reset module but preserve registers.
+			ll_lw_can_rst_from_isr();
+
+			// Requeue the frame if we broke sending.
+			if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
+			{
+				ll_lw_can_write_frame_phy(pCanDriverObj->cachedFrame, false);
+				++pCanDriverObj->counters.frameRetrySendCnt;
+			}
+
+			// If this is n-th reset, then enlarge delay for reset to long delay.
+			if (pCanDriverObj->counters.resetsInARow < maxResets && ++pCanDriverObj->counters.resetsInARow == maxResets)
+			{
+				xQueueReset(pCanDriverObj->txQueue);
+				xQueueReset(pCanDriverObj->rxQueue);
+				pCanDriverObj->state.B.hasAnyFrameInTxBuffer = 0;
+				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
+			}
+		}
+		else
+		{
+			// Restore short delay and clear reset counter.
+			pCanDriverObj->counters.resetsInARow = 0;
+			resetDelay = shortDelay;
+		}
+		LWCAN_EXIT_CRITICAL();
+		
+		// Some cooldown.
+		vTaskDelay(resetDelay);
+	}
+}
+
 void IRAM_ATTR ll_lw_can_interrupt()
 {
 	// Read and clear interrupts.
@@ -235,12 +286,6 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	// Handle counters.
 	if (interrupt & LWCAN_IRQ_ARB_LOST)
 		++pCanDriverObj->counters.arbLostCnt;
-	
-	if (interrupt & LWCAN_IRQ_DATA_OVERRUN)
-		++pCanDriverObj->counters.dataOverrunCnt;
-
-	if (interrupt & LWCAN_IRQ_WAKEUP)
-		++pCanDriverObj->counters.wakeUpCnt;
 
 	if (interrupt & LWCAN_IRQ_ERR_PASSIVE)
 		++pCanDriverObj->counters.errPassiveCnt;
@@ -255,24 +300,17 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	}
 
 	// Handle error interrupts.
-	if (interrupt & ( LWCAN_IRQ_ERR				//0x4
-					| LWCAN_IRQ_DATA_OVERRUN	//0x8
-					| LWCAN_IRQ_WAKEUP			//0x10
+	if (interrupt & ( LWCAN_IRQ_WAKEUP			//0x10
 					| LWCAN_IRQ_ERR_PASSIVE		//0x20
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		// Reset module but preserve registers.
-		ll_lw_can_rst_from_isr();
-
-		// Requeue the frame if we broke sending.
-		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
-		{
-			ll_lw_can_write_frame_phy(pCanDriverObj->savedFrame);
-			++pCanDriverObj->counters.errataResendFrameCnt;
-		}
+		pCanDriverObj->state.B.needReset = true;
 		return;
 	}
+
+	if (pCanDriverObj->state.B.needReset)
+		return;
 
 	// Handle sending in case there is no error.
 	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
@@ -330,6 +368,8 @@ bool ll_lw_can_start()
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 	pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
 
+	xTaskCreate(lw_can_tx_task, "CANTX", 2408, nullptr, 2, &pCanDriverObj->txTask);
+
 	// Reset counters.
 	pCanDriverObj->counters = {};
 	
@@ -360,6 +400,7 @@ bool ll_lw_can_stop()
 	// Delete queues.
 	vQueueDelete(pCanDriverObj->txQueue);
 	vQueueDelete(pCanDriverObj->rxQueue);
+	vTaskDelete(pCanDriverObj->txTask);
 
 	// Clear state flags.
 	pCanDriverObj->state.B.isDriverStarted = false;
@@ -435,6 +476,7 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 	ll_lw_can_interrupt();
 	LWCAN_EXIT_CRITICAL_ISR();
 }
+
 //===================================================================================================================
 // PUBLIC API
 // Remember to use spinlock properly.

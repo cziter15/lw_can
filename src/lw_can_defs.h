@@ -351,11 +351,10 @@ struct CAN_Module_t
 struct lw_can_bus_counters
 {
 	uint32_t arbLostCnt{0};							// Arbitration lost counter.
-	uint32_t dataOverrunCnt{0};						// Data overrun counter.
-	uint32_t wakeUpCnt{0};							// Wake up counter.
 	uint32_t errPassiveCnt{0};						// Error passive counter.
 	uint32_t busErrorCnt{0};						// Bus error counter.
-	uint32_t errataResendFrameCnt{0};				// RXFrame errata error counter.
+	uint32_t frameRetrySendCnt{0};					// TX frame retry counter.
+	uint32_t resetsInARow{10};						// Number of resets in a row.
 };
 
 struct lw_can_bus_timing_t
@@ -365,3 +364,6 @@ struct lw_can_bus_timing_t
 	uint8_t	tseg2;
 	uint8_t sjw;
 };
+
+#define LW_CAN_SHORT_RESET_DELAY_MS 200
+#define LW_CAN_LONG_RESET_DELAY_MS 10000
