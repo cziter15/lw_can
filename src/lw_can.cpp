@@ -83,7 +83,7 @@ struct lw_can_driver_obj_t
 	QueueHandle_t rxQueue;									// CAN RX queue handle.
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
-	xTaskHandle txTask;										// CAN TX task.
+	xTaskHandle wdtTask;										// CAN TX task.
 
 	lw_can_frame_t cachedFrame;								// Cached frame to retry.
 	lw_can_bus_counters counters;							// Statistics counters.
@@ -233,7 +233,7 @@ void ll_lw_can_rst_from_isr()
 	MODULE_CAN->MOD.B.RM = 0;
 }
 
-void lw_can_tx_task(void* arg)
+void lw_can_wdt_task(void* arg)
 {
 	uint32_t shortDelay = pdMS_TO_TICKS(LW_CAN_SHORT_RESET_DELAY_MS);
 	uint32_t resetDelay = shortDelay;
@@ -368,7 +368,8 @@ bool ll_lw_can_start()
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
 	pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
 
-	xTaskCreate(lw_can_tx_task, "CANTX", 2408, nullptr, 2, &pCanDriverObj->txTask);
+	// Create control task.
+	xTaskCreate(lw_can_wdt_task, "vnct", 2408, nullptr, 2, &pCanDriverObj->wdtTask);
 
 	// Reset counters.
 	pCanDriverObj->counters = {};
@@ -400,7 +401,7 @@ bool ll_lw_can_stop()
 	// Delete queues.
 	vQueueDelete(pCanDriverObj->txQueue);
 	vQueueDelete(pCanDriverObj->rxQueue);
-	vTaskDelete(pCanDriverObj->txTask);
+	vTaskDelete(pCanDriverObj->wdtTask);
 
 	// Clear state flags.
 	pCanDriverObj->state.B.isDriverStarted = false;
