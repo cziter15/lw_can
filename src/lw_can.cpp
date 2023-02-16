@@ -81,7 +81,7 @@ struct lw_can_driver_obj_t
 	QueueHandle_t rxQueue;									// CAN RX queue handle.
 	QueueHandle_t txQueue;									// CAN TX queue handle.
 
-	xTaskHandle wdtTask;										// CAN TX task.
+	xTaskHandle wdtTask;									// CAN TX task.
 
 	lw_can_frame_t cachedFrame;								// Cached frame to retry.
 	lw_can_bus_counters counters;							// Statistics counters.
@@ -90,7 +90,7 @@ struct lw_can_driver_obj_t
 	lw_can_driver_state state;								// Driver state flags.
 };
 
-lw_can_driver_obj_t* pCanDriverObj{nullptr}; 			// Driver object pointer.
+lw_can_driver_obj_t* pCanDriverObj{nullptr}; 				// Driver object pointer.
 
 //===================================================================================================================
 // Required forward declarations.
