@@ -242,8 +242,6 @@ void lw_can_wdt_task(void* arg)
 		LWCAN_ENTER_CRITICAL();
 		if (pCanDriverObj->state.B.needReset)
 		{
-			pCanDriverObj->state.B.needReset = false;
-
 			// Reset module but preserve registers.
 			ll_lw_can_rst_from_isr();
 
@@ -262,6 +260,8 @@ void lw_can_wdt_task(void* arg)
 				pCanDriverObj->state.B.hasAnyFrameInTxBuffer = 0;
 				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
 			}
+
+			pCanDriverObj->state.B.needReset = false;
 		}
 		else
 		{
@@ -522,7 +522,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 	LWCAN_ENTER_CRITICAL();
 	if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted)
 	{
-		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
+		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer || pCanDriverObj->state.B.needReset)
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
