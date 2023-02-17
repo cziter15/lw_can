@@ -112,26 +112,36 @@ void IRAM_ATTR ll_lw_can_reset_filter_reg()
 	MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
 }
 
-void IRAM_ATTR ll_lw_can_enable_peripheral()
+void IRAM_ATTR ll_lw_can_enable_peripheral_in_reset_mode()
 {
 	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
-	MODULE_CAN->MOD.B.RM = 1;
+	MODULE_CAN->MOD.U = 1;
 	MODULE_CAN->IER.U = 0;
 }
 
 void IRAM_ATTR ll_lw_can_disable_peripheral()
 {
-	MODULE_CAN->MOD.B.RM = 1;
+	MODULE_CAN->MOD.U = 1;
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
 	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
 	MODULE_CAN->IER.U = 0;
 }
 
-void IRAM_ATTR ll_lw_can_clear_ir_and_ecc()
+void IRAM_ATTR ll_lw_can_clear_registers()
 {
+	MODULE_CAN->BTR0.U = 0;
+	MODULE_CAN->BTR1.U = 0;
+	MODULE_CAN->CDR.U = 0;
+	MODULE_CAN->OCR.U = 0;
+
+	MODULE_CAN->RMC.U = 0;
+	MODULE_CAN->SR.U = 0;
+	MODULE_CAN->CMR.U = 0;
+
 	MODULE_CAN->TXERR.U = 0;
 	MODULE_CAN->RXERR.U = 0;
+
 	(void)MODULE_CAN->ECC;
 	(void)MODULE_CAN->IR.U;
 }
@@ -211,21 +221,23 @@ void ll_lw_can_rst_from_isr()
 	uint32_t BTR0 = MODULE_CAN->BTR0.U;
 	uint32_t BTR1 = MODULE_CAN->BTR1.U;
 	uint32_t CDR = MODULE_CAN->CDR.U;
-	uint32_t CMR = MODULE_CAN->CMR.U;
+	uint32_t OCR = MODULE_CAN->OCR.U;
 	uint32_t IER = MODULE_CAN->IER.U;
 
 	// Restart with register cleanup. 
 	ll_lw_can_disable_peripheral();
-	ll_lw_can_enable_peripheral();
-	ll_lw_can_reset_filter_reg();
-	ll_lw_can_clear_ir_and_ecc();
+	ll_lw_can_enable_peripheral_in_reset_mode();
+	ll_lw_can_clear_registers();
 
 	// Restore registers.
 	MODULE_CAN->BTR0.U = BTR0;
 	MODULE_CAN->BTR1.U = BTR1;
 	MODULE_CAN->CDR.U = CDR;
-	MODULE_CAN->CMR.U = CMR;
+	MODULE_CAN->OCR.U = OCR;
 	MODULE_CAN->IER.U = IER;
+
+	// Reset filter reg.
+	ll_lw_can_reset_filter_reg();
 
 	// Release reset mode.
 	MODULE_CAN->MOD.B.RM = 0;
@@ -338,10 +350,11 @@ bool ll_lw_can_start()
 	// Assign GPIOs.
 	ll_lw_can_assign_gpio_matrix();
 	// Enable peripheral.
-	ll_lw_can_enable_peripheral();
+	ll_lw_can_enable_peripheral_in_reset_mode();
+	// Reset interrupt and error counters.
+	ll_lw_can_clear_registers();
 
 	// Set CAN Mode.
-	MODULE_CAN->CMR.B.GTS = 0;
 	MODULE_CAN->CDR.B.CAN_M = 1;
 
 	// Set timing.
@@ -356,8 +369,6 @@ bool ll_lw_can_start()
 
 	// Reset filter.
 	ll_lw_can_reset_filter_reg();
-	// Reset interrupt and error counters.
-	ll_lw_can_clear_ir_and_ecc();
 
 	// Enable interrupts.
 	MODULE_CAN->IER.U = 0xEF;

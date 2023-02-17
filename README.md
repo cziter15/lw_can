@@ -1,6 +1,8 @@
 # Lightweight ESP32 CAN Library
 Library to support ESP32 built-in CAN controller.
 
+## This project is in experimental stage!
+
 ## Introduction
 When I developed the code for the heating boiler monitoring module (PelletMon) I used several different CAN libraries.
 
