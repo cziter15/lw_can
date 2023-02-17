@@ -269,7 +269,7 @@ void lw_can_wdt_task(void* arg)
 			{
 				xQueueReset(pCanDriverObj->txQueue);
 				xQueueReset(pCanDriverObj->rxQueue);
-				pCanDriverObj->state.B.hasAnyFrameInTxBuffer = 0;
+				pCanDriverObj->state.B.hasAnyFrameInTxBuffer = false;
 				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
 			}
 
