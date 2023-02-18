@@ -59,7 +59,7 @@ union lw_can_driver_state
 	uint8_t U;												// Unsigned access 
 	struct 
 	{
-		bool needReset : 1;									// Reset flag
+		bool txCooldown : 1;								
 		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
 		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
 	} B;
@@ -214,7 +214,7 @@ void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame, bool cache
 	MODULE_CAN->CMR.B.TR = 1;
 }
 
-void ll_lw_can_rst_from_isr()
+void IRAM_ATTR ll_lw_can_rst_from_isr()
 {
 	// @TODO: Check CMR for abort transmission later. Maybe worth to call before.
 	// Save registers.
@@ -252,10 +252,10 @@ void lw_can_wdt_task(void* arg)
 	while (true)
 	{	
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj->state.B.needReset)
+		if (pCanDriverObj->state.B.txCooldown)
 		{
-			// Reset module but preserve registers.
-			ll_lw_can_rst_from_isr();
+			// Exit reset mode.
+			MODULE_CAN->MOD.B.RM = 0;
 
 			// Requeue the frame if we broke sending.
 			if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
@@ -273,7 +273,7 @@ void lw_can_wdt_task(void* arg)
 				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
 			}
 
-			pCanDriverObj->state.B.needReset = false;
+			pCanDriverObj->state.B.txCooldown = false;
 		}
 		else
 		{
@@ -315,11 +315,12 @@ void IRAM_ATTR ll_lw_can_interrupt()
 					| LWCAN_IRQ_BUS_ERR			//0x80
 	))
 	{
-		pCanDriverObj->state.B.needReset = true;
+		ll_lw_can_rst_from_isr();
+		pCanDriverObj->state.B.txCooldown = true;
 		return;
 	}
 
-	if (pCanDriverObj->state.B.needReset)
+	if (pCanDriverObj->state.B.txCooldown)
 		return;
 
 	// Handle sending in case there is no error.
@@ -533,7 +534,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 	LWCAN_ENTER_CRITICAL();
 	if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted)
 	{
-		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer || pCanDriverObj->state.B.needReset)
+		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer || pCanDriverObj->state.B.txCooldown)
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
