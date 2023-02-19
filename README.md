@@ -1,7 +1,7 @@
 # Lightweight ESP32 CAN Library
 Library to support ESP32 built-in CAN controller.
 
-## This project is in experimental stage!
+## This project is at experimental stage!
 
 ## Introduction
 When I developed the code for the heating boiler monitoring module (PelletMon) I used several different CAN libraries.
@@ -18,8 +18,8 @@ All these issues led me to create my own solution - lw_can - which is lightweigh
 ### Features
 - TWAI-like interface known from ESP-IDF (methods like lw_can_install, lw_can_transmit etc)
 - Error counters (arbitration lost, bus error, overrun, passive etc)
-- Watchdog (will reset peripheral in case of error)
-- Various bus speed support.
+- Watchdog (will reset peripheral in case of error - this is "smart reset" avoiding reset loop - however this is not CAN standard compliant).
+- Various bus speed support (BRP settings available)
 
 ## Based on
 - esp32_can [from Collin Kidder](https://github.com/collin80/esp32_can)
