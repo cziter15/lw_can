@@ -45,6 +45,11 @@ static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 #define LWCAN_ENTER_CRITICAL_ISR()			portENTER_CRITICAL_ISR(&globalCanSpinLock)
 #define LWCAN_EXIT_CRITICAL_ISR()			portEXIT_CRITICAL_ISR(&globalCanSpinLock)
 
+#define LWCAN_DF_TX_COOLDOWN 		(1 << 0) // 1
+#define LWCAN_DF_DRIVER_STARTED 	(1 << 1) // 2
+#define LWCAN_DF_HAS_FRAME_TO_SEND 	(1 << 2) // 4
+#define LWCAN_DF_AUTO_RETRANSMIT 	(1 << 3) // 8
+
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
@@ -52,17 +57,6 @@ struct lw_can_filter_t
 {
 	uint32_t id{0};
 	uint32_t mask{0};
-};
-
-union lw_can_driver_state
-{
-	uint8_t U;												// Unsigned access 
-	struct 
-	{
-		bool txCooldown : 1;								
-		bool isDriverStarted : 1;							// Flag to indicate if CAN driver is started.
-		bool hasAnyFrameInTxBuffer : 1;						// Flag to indicate if CAN driver is transmitting.
-	} B;
 };
 
 struct lw_can_driver_obj_t
@@ -87,7 +81,7 @@ struct lw_can_driver_obj_t
 	lw_can_bus_counters counters;							// Statistics counters.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
-	lw_can_driver_state state;								// Driver state flags.
+	uint32_t driverFlags;									// Driver state flags.
 };
 
 lw_can_driver_obj_t* pCanDriverObj{nullptr}; 				// Driver object pointer.
@@ -208,7 +202,7 @@ void IRAM_ATTR ll_lw_can_write_frame_phy(const lw_can_frame_t& frame, bool cache
 			MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[thisByte] = frame.data.u8[thisByte];
 	}
 
-	if (cacheFrame)
+	if (cacheFrame && (pCanDriverObj->driverFlags & LWCAN_DF_AUTO_RETRANSMIT))
 		pCanDriverObj->cachedFrame = frame;
 
 	MODULE_CAN->CMR.B.TR = 1;
@@ -252,13 +246,13 @@ void lw_can_wdt_task(void* arg)
 	while (true)
 	{	
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj->state.B.txCooldown)
+		if (pCanDriverObj->driverFlags & LWCAN_DF_TX_COOLDOWN)
 		{
 			// Exit reset mode.
 			MODULE_CAN->MOD.B.RM = 0;
 
 			// Requeue the frame if we broke sending.
-			if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer)
+			if ((pCanDriverObj->driverFlags & LWCAN_DF_AUTO_RETRANSMIT) && (pCanDriverObj->driverFlags & LWCAN_DF_HAS_FRAME_TO_SEND))
 			{
 				ll_lw_can_write_frame_phy(pCanDriverObj->cachedFrame, false);
 				++pCanDriverObj->counters.frameRetrySendCnt;
@@ -269,11 +263,11 @@ void lw_can_wdt_task(void* arg)
 			{
 				xQueueReset(pCanDriverObj->txQueue);
 				xQueueReset(pCanDriverObj->rxQueue);
-				pCanDriverObj->state.B.hasAnyFrameInTxBuffer = false;
 				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
+				pCanDriverObj->driverFlags &= ~LWCAN_DF_HAS_FRAME_TO_SEND;
 			}
-
-			pCanDriverObj->state.B.txCooldown = false;
+			
+			pCanDriverObj->driverFlags &= ~LWCAN_DF_TX_COOLDOWN;
 		}
 		else
 		{
@@ -316,15 +310,16 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	))
 	{
 		ll_lw_can_rst_from_isr();
-		pCanDriverObj->state.B.txCooldown = true;
+		pCanDriverObj->driverFlags |= LWCAN_DF_TX_COOLDOWN;
 		return;
 	}
 
-	if (pCanDriverObj->state.B.txCooldown)
+	// Skip handling transmission if we are in TX cooldown state.
+	if (pCanDriverObj->driverFlags & LWCAN_DF_TX_COOLDOWN)
 		return;
 
 	// Handle sending in case there is no error.
-	if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer && MODULE_CAN->SR.B.TBS) 
+	if ((pCanDriverObj->driverFlags & LWCAN_DF_HAS_FRAME_TO_SEND) && MODULE_CAN->SR.B.TBS) 
 	{
 		lw_can_frame_t frame;
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
@@ -334,7 +329,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 		}
 		else 
 		{
-			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = false;
+			pCanDriverObj->driverFlags &= ~LWCAN_DF_HAS_FRAME_TO_SEND;
 		}
 	}
 }
@@ -342,7 +337,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 bool ll_lw_can_start()
 {
 	// If not installed or started, return false.
-	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
+	if (!pCanDriverObj || (pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED))
 		return false;
 	
 	// Time quanta.
@@ -391,7 +386,7 @@ bool ll_lw_can_start()
 	MODULE_CAN->MOD.B.RM = 0;
 
 	// Set driver state.
-	pCanDriverObj->state.B.isDriverStarted = true;
+	pCanDriverObj->driverFlags |= LWCAN_DF_DRIVER_STARTED;
 
 	return true;
 }
@@ -399,7 +394,7 @@ bool ll_lw_can_start()
 bool ll_lw_can_stop()
 {
 	// If not installed or not started, return false.
-	if (!pCanDriverObj || !pCanDriverObj->state.B.isDriverStarted)
+	if (!pCanDriverObj || !(pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED))
 		return false;
 
 	// Turn off modkule.
@@ -414,7 +409,7 @@ bool ll_lw_can_stop()
 	vTaskDelete(pCanDriverObj->wdtTask);
 
 	// Clear state flags.
-	pCanDriverObj->state.B.isDriverStarted = false;
+	pCanDriverObj->driverFlags &= ~LWCAN_DF_DRIVER_STARTED;
 
 	return true;
 }
@@ -422,7 +417,7 @@ bool ll_lw_can_stop()
 bool ll_lw_can_set_filter(uint32_t id, uint32_t mask)
 {
 	// If not installed or already started, return false.
-	if (!pCanDriverObj || pCanDriverObj->state.B.isDriverStarted)
+	if (!pCanDriverObj || (pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED))
 		return false;
 
 	pCanDriverObj->filter.mask = mask;
@@ -454,7 +449,7 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timi
 	pCanDriverObj->txQueueSize = txQueueSize;
 
 	// Reset states.
-	pCanDriverObj->state.U = 0;
+	pCanDriverObj->driverFlags = LWCAN_DF_AUTO_RETRANSMIT;
 
 	return true;
 }
@@ -466,7 +461,7 @@ bool ll_lw_can_uninstall()
 		return false;
 
 	// Stop driver if working.
-	if (pCanDriverObj->state.B.isDriverStarted)
+	if (pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED)
 		ll_lw_can_stop();
 
 	// Release gpio.
@@ -532,15 +527,15 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 {
 	bool frameQueued{false};
 	LWCAN_ENTER_CRITICAL();
-	if (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted)
+	if (pCanDriverObj && (pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED))
 	{
-		if (pCanDriverObj->state.B.hasAnyFrameInTxBuffer || pCanDriverObj->state.B.txCooldown)
+		if ((pCanDriverObj->driverFlags & LWCAN_DF_HAS_FRAME_TO_SEND) || (pCanDriverObj->driverFlags & LWCAN_DF_TX_COOLDOWN))
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
 		else
 		{
-			pCanDriverObj->state.B.hasAnyFrameInTxBuffer = true;
+			pCanDriverObj->driverFlags |= LWCAN_DF_HAS_FRAME_TO_SEND;
 			ll_lw_can_write_frame_phy(frame);
 			frameQueued = true;
 		}
@@ -553,7 +548,7 @@ bool lw_can_read_next_frame(lw_can_frame_t& outFrame)
 {
 	QueueHandle_t rxQueue;
 	LWCAN_ENTER_CRITICAL();
-	rxQueue = (pCanDriverObj && pCanDriverObj->state.B.isDriverStarted) ? pCanDriverObj->rxQueue : nullptr;
+	rxQueue = (pCanDriverObj && (pCanDriverObj->driverFlags & LWCAN_DF_DRIVER_STARTED)) ? pCanDriverObj->rxQueue : nullptr;
 	LWCAN_EXIT_CRITICAL();
 	return rxQueue != NULL && xQueueReceive(rxQueue, &outFrame, 0) == pdTRUE;
 }
