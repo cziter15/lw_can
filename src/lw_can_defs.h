@@ -353,7 +353,7 @@ struct lw_can_bus_counters
 	uint32_t arbLostCnt{0};							// Arbitration lost counter.
 	uint32_t errPassiveCnt{0};						// Error passive counter.
 	uint32_t busErrorCnt{0};						// Bus error counter.
-	uint32_t frameRetrySendCnt{0};					// TX frame retry counter.
+	uint32_t retransmitCount{0};					// TX frame retry counter.
 	uint32_t resetsInARow{10};						// Number of resets in a row.
 };
 
