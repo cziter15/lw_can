@@ -367,3 +367,11 @@ struct lw_can_bus_timing_t
 
 #define LW_CAN_SHORT_RESET_DELAY_MS 200
 #define LW_CAN_LONG_RESET_DELAY_MS 10000
+
+#define LWCAN_DS_TX_COOLDOWN 				(1 << 0) // 1
+#define LWCAN_DS_DRIVER_STARTED 			(1 << 1) // 2
+#define LWCAN_DS_HAS_FRAME_TO_SEND 			(1 << 2) // 4
+
+#define LWCAN_CFG_LISTEN_ONLY 				(1 << 0) // 1
+#define LWCAN_CFG_AUTO_RETRANSMIT 			(1 << 1) // 2
+#define LWCAN_CFG_TRIPLE_SAMPLING 			(1 << 2) // 4

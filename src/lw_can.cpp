@@ -44,13 +44,6 @@ static portMUX_TYPE globalCanSpinLock 	=	portMUX_INITIALIZER_UNLOCKED;
 #define LWCAN_EXIT_CRITICAL()				portEXIT_CRITICAL(&globalCanSpinLock)
 #define LWCAN_ENTER_CRITICAL_ISR()			portENTER_CRITICAL_ISR(&globalCanSpinLock)
 #define LWCAN_EXIT_CRITICAL_ISR()			portEXIT_CRITICAL_ISR(&globalCanSpinLock)
-
-#define LWCAN_DS_TX_COOLDOWN 				(1 << 0) // 1
-#define LWCAN_DS_DRIVER_STARTED 			(1 << 1) // 2
-#define LWCAN_DS_HAS_FRAME_TO_SEND 			(1 << 2) // 4
-
-#define LWCAN_CFG_LISTEN_ONLY 				(1 << 0) // 1
-#define LWCAN_CFG_AUTO_RETRANSMIT 			(1 << 1) // 2
 //===================================================================================================================
 // Driver object
 //===================================================================================================================
@@ -359,7 +352,7 @@ bool ll_lw_can_start()
 	MODULE_CAN->BTR0.B.BRP = (pCanDriverObj->busTiming.prescaler / 2) - 1;
 	MODULE_CAN->BTR1.B.TSEG1 = pCanDriverObj->busTiming.tseg1 - 1;
 	MODULE_CAN->BTR1.B.TSEG2 = pCanDriverObj->busTiming.tseg2 - 1;
-	MODULE_CAN->BTR1.B.SAM = 1;
+	MODULE_CAN->BTR1.B.SAM = (pCanDriverObj->driverFlags & LWCAN_CFG_TRIPLE_SAMPLING) ? 1 : 0;
 
 	// Set OC mode.
 	MODULE_CAN->MOD.B.LOM = (pCanDriverObj->configFlags & LWCAN_CFG_LISTEN_ONLY) ? 1 : 0;
@@ -426,7 +419,7 @@ bool ll_lw_can_set_filter(uint32_t id, uint32_t mask)
 	return true;
 }
 
-bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, bool autoRetransmit, bool listenOnly)
+bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t configFlags)
 {
 	// If already installed, return false.
 	if (pCanDriverObj)
@@ -445,16 +438,9 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timi
 	pCanDriverObj->rxQueueSize = rxQueueSize;
 	pCanDriverObj->txQueueSize = txQueueSize;
 
-	// Clear flags.
-	pCanDriverObj->driverFlags = 0;
-	pCanDriverObj->configFlags = 0;
-
 	// Setup flags.
-	if (autoRetransmit)
-		pCanDriverObj->configFlags |= LWCAN_CFG_AUTO_RETRANSMIT;
-
-	if (listenOnly)
-		pCanDriverObj->configFlags |= LWCAN_CFG_LISTEN_ONLY;
+	pCanDriverObj->driverFlags = 0;
+	pCanDriverObj->configFlags = configFlags;
 
 	return true;
 }
@@ -492,11 +478,11 @@ void IRAM_ATTR lw_can_interrupt(void* arg)
 // PUBLIC API
 // Remember to use spinlock properly.
 //===================================================================================================================
-bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, bool autoRetransmit, bool listenOnly)
+bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize, uint8_t txQueueSize, uint8_t configFlags)
 {
 	bool driverInstalled;
 	LWCAN_ENTER_CRITICAL();
-	driverInstalled = ll_lw_can_install(rxPin, txPin, busTiming, rxQueueSize, txQueueSize, autoRetransmit, listenOnly);
+	driverInstalled = ll_lw_can_install(rxPin, txPin, busTiming, rxQueueSize, txQueueSize, configFlags);
 	LWCAN_EXIT_CRITICAL();
 	return driverInstalled;
 }

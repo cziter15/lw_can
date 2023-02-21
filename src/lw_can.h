@@ -41,12 +41,11 @@
 	@param busTiming CAN BUS timing reference structure.
 	@param rxQueueSize CAN RX queue size.
 	@param txQueueSize CAN TX queue size.
-	@param autoRetransmit CAN auto retransmit after bus off (default true).
-	@param listenOnly True if should only listen to messages.
+	@param configFlags CAN config flags.
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30,  bool autoRetransmit = true, bool listenOnly = false);
+extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t configFlags = LWCAN_CFG_AUTO_RETRANSMIT);
 
 /*
 	This function is used to set CAN bus filter for incomming message.
