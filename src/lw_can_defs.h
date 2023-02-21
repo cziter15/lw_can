@@ -33,8 +33,8 @@
 #include <stdint.h>
 #include "driver/gpio.h"
 
-#define LW_CAN_SHORT_RESET_DELAY_MS 200
-#define LW_CAN_LONG_RESET_DELAY_MS 10000
+#define LWCAN_SHORT_RESET_DELAY_MS 200
+#define LWCAN_LONG_RESET_DELAY_MS 10000
 
 #define LWCAN_DS_TX_COOLDOWN 				(1 << 0) // 1
 #define LWCAN_DS_DRIVER_STARTED 			(1 << 1) // 2

@@ -233,7 +233,7 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 
 void lw_can_wdt_task(void* arg)
 {
-	uint32_t shortDelay = pdMS_TO_TICKS(LW_CAN_SHORT_RESET_DELAY_MS);
+	uint32_t shortDelay = pdMS_TO_TICKS(LWCAN_SHORT_RESET_DELAY_MS);
 	uint32_t resetDelay = shortDelay;
 	uint8_t maxResets = 10;
 
@@ -257,7 +257,7 @@ void lw_can_wdt_task(void* arg)
 			{
 				xQueueReset(pCanDriverObj->txQueue);
 				xQueueReset(pCanDriverObj->rxQueue);
-				resetDelay = pdMS_TO_TICKS(LW_CAN_LONG_RESET_DELAY_MS);
+				resetDelay = pdMS_TO_TICKS(LWCAN_LONG_RESET_DELAY_MS);
 				pCanDriverObj->driverFlags &= ~LWCAN_DS_HAS_FRAME_TO_SEND;
 			}
 			
