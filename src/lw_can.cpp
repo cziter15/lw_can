@@ -256,7 +256,7 @@ void lw_can_wdt_task(void* arg)
 			if ((pCanDriverObj->configFlags & LWCAN_CFG_AUTO_RETRANSMIT) && (pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND))
 			{
 				ll_lw_can_write_frame_phy(pCanDriverObj->cachedFrame, false);
-				++pCanDriverObj->counters.frameRetrySendCnt;
+				++pCanDriverObj->counters.retransmitCount;
 			}
 
 			// If this is n-th reset, then enlarge delay for reset to long delay.
