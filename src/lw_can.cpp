@@ -375,7 +375,7 @@ bool ll_lw_can_start()
 	pCanDriverObj->txQueue = xQueueCreate(pCanDriverObj->txQueueSize, sizeof(lw_can_frame_t));
 
 	// Create control task.
-	xTaskCreate(lw_can_wdt_task, "vnct", 2408, nullptr, 2, &pCanDriverObj->wdtTask);
+	xTaskCreate(lw_can_wdt_task, "canwdt", 2408, nullptr, 2, &pCanDriverObj->wdtTask);
 
 	// Reset counters.
 	pCanDriverObj->counters = {};
