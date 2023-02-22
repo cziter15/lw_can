@@ -356,6 +356,8 @@ bool ll_lw_can_start()
 
 	// Set OC mode.
 	MODULE_CAN->MOD.B.LOM = (pCanDriverObj->configFlags & LWCAN_CFG_LISTEN_ONLY) ? 1 : 0;
+	MODULE_CAN->OCR.B.OCTP0 = 1;
+	MODULE_CAN->OCR.B.OCTN0 = 1;
 
 	// Reset filter.
 	ll_lw_can_reset_filter_reg();
