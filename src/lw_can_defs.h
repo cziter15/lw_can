@@ -44,6 +44,8 @@
 #define LWCAN_CFG_AUTO_RETRANSMIT 			(1 << 1) // 2
 #define LWCAN_CFG_TRIPLE_SAMPLING 			(1 << 2) // 4
 
+//#define LWCAN_DEBUG_COUNTERS
+
 enum lw_can_frame_format_t
 {
 	LWCAN_FRAME_STD = 0, 							// Standard frame, using 11 bit identifer. 
@@ -361,10 +363,13 @@ struct CAN_Module_t
 
 struct lw_can_bus_counters
 {
-	uint32_t arbLostCnt{0};							// Arbitration lost counter.
-	uint32_t errPassiveCnt{0};						// Error passive counter.
-	uint32_t busErrorCnt{0};						// Bus error counter.
-	uint32_t retransmitCount{0};					// TX frame retry counter.
+	#ifdef LWCAN_DEBUG_COUNTERS
+		uint32_t arbLostCnt{0};							// Arbitration lost counter.
+		uint32_t errPassiveCnt{0};						// Error passive counter.
+		uint32_t busErrorCnt{0};						// Bus error counter.
+		uint32_t retransmitCount{0};					// TX frame retry counter.
+	#endif
+
 	uint32_t resetsInARow{10};						// Number of resets in a row.
 };
 

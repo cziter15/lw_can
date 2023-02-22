@@ -249,7 +249,9 @@ void lw_can_wdt_task(void* arg)
 			if ((pCanDriverObj->configFlags & LWCAN_CFG_AUTO_RETRANSMIT) && (pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND))
 			{
 				ll_lw_can_write_frame_phy(pCanDriverObj->cachedFrame, false);
+#ifdef LWCAN_DEBUG_COUNTERS
 				++pCanDriverObj->counters.retransmitCount;
+#endif
 			}
 
 			// If this is n-th reset, then enlarge delay for reset to long delay.
@@ -282,6 +284,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	uint32_t interrupt {MODULE_CAN->IR.U};
 
 	// Handle counters.
+#ifdef LWCAN_DEBUG_COUNTERS
 	if (interrupt & LWCAN_IRQ_ARB_LOST)
 		++pCanDriverObj->counters.arbLostCnt;
 
@@ -290,6 +293,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 
 	if (interrupt & LWCAN_IRQ_BUS_ERR)
 		++pCanDriverObj->counters.busErrorCnt;
+#endif
 
 	// Read frames from buffer.
 	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
@@ -555,6 +559,7 @@ bool lw_can_set_filter(uint32_t id, uint32_t mask)
 	return filterSetStatus;
 }
 
+#ifdef LWCAN_DEBUG_COUNTERS
 bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToTx, uint32_t& msgsToRx)
 {
 	bool readDone{false};
@@ -569,6 +574,7 @@ bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToT
 	LWCAN_EXIT_CRITICAL();
 	return readDone;
 }
+#endif
 //===================================================================================================================
 // END PUBLIC API
 //===================================================================================================================

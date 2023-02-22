@@ -110,4 +110,7 @@ extern bool lw_can_read_next_frame(lw_can_frame_t& outFrame);
 
 	@return True on success, false on fail.
 */
+
+#ifdef LWCAN_DEBUG_COUNTERS
 extern bool lw_can_get_bus_counters(lw_can_bus_counters& outCounters, uint32_t& msgsToTx, uint32_t& msgsToRx);
+#endif
