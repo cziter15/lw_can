@@ -45,7 +45,7 @@
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t configFlags = LWCAN_CFG_AUTO_RETRANSMIT);
+extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t configFlags = LWCAN_CFG_AUTO_RETRANSMIT | LWCAN_CFG_TRIPLE_SAMPLING);
 
 /*
 	This function is used to set CAN bus filter for incomming message.
