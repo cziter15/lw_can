@@ -35,6 +35,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "soc/dport_reg.h"
+#include "esp_pm.h"
 
 //===================================================================================================================
 // Critical sections.
@@ -76,6 +77,8 @@ struct lw_can_driver_obj_t
 
 	uint8_t configFlags;									// CAN config flags.
 	uint8_t driverFlags;									// Driver state flags.
+
+	esp_pm_lock_handle_t pmLock;							// PM lock for APB.
 };
 
 lw_can_driver_obj_t* pCanDriverObj{nullptr}; 				// Driver object pointer.
@@ -338,6 +341,9 @@ bool ll_lw_can_start()
 	if (!pCanDriverObj || (pCanDriverObj->driverFlags & LWCAN_DS_DRIVER_STARTED))
 		return false;
 	
+	if (pCanDriverObj->pmLock)
+		esp_pm_lock_acquire(pCanDriverObj->pmLock);
+
 	// Time quanta.
 	double quanta;
 
@@ -410,6 +416,9 @@ bool ll_lw_can_stop()
 	// Clear state flags.
 	pCanDriverObj->driverFlags = 0;
 
+	if (pCanDriverObj->pmLock)
+		esp_pm_lock_release(pCanDriverObj->pmLock);
+
 	return true;
 }
 
@@ -447,6 +456,10 @@ bool ll_lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timi
 	// Setup flags.
 	pCanDriverObj->driverFlags = 0;
 	pCanDriverObj->configFlags = configFlags;
+
+	// Initialize PM lock for APB frequency.
+	pCanDriverObj->pmLock = nullptr;
+	esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "candrv", &pCanDriverObj->pmLock);
 
 	return true;
 }
