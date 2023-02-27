@@ -308,7 +308,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	}
 
 	// Handle error interrupts.
-	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE	| LWCAN_IRQ_BUS_ERR))
+	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE | LWCAN_IRQ_BUS_ERR))
 	{
 		ll_lw_can_rst_from_isr();
 		pCanDriverObj->driverFlags |= LWCAN_DS_TX_COOLDOWN;
