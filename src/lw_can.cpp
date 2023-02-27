@@ -137,8 +137,17 @@ void IRAM_ATTR ll_lw_can_clear_registers()
 	(void)MODULE_CAN->IR.U;
 }
 
+void ll_lw_can_release_gpio_matrix()
+{
+	gpio_reset_pin(pCanDriverObj->rxPin);
+	gpio_reset_pin(pCanDriverObj->txPin);
+}
+
 void ll_lw_can_assign_gpio_matrix()
 {
+	// Reset pins.
+	ll_lw_can_release_gpio_matrix();
+
 	// Configure TX pin
 	gpio_set_level(pCanDriverObj->txPin, 1);
 	gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
@@ -149,12 +158,6 @@ void ll_lw_can_assign_gpio_matrix()
 	gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
 	gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
 	gpio_pad_select_gpio(pCanDriverObj->rxPin);
-}
-
-void ll_lw_can_release_gpio_matrix()
-{
-	gpio_reset_pin(pCanDriverObj->rxPin);
-	gpio_reset_pin(pCanDriverObj->txPin);
 }
 
 void IRAM_ATTR ll_lw_can_read_frame_phy()
@@ -305,10 +308,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	}
 
 	// Handle error interrupts.
-	if (interrupt & ( LWCAN_IRQ_WAKEUP			//0x10
-					| LWCAN_IRQ_ERR_PASSIVE		//0x20
-					| LWCAN_IRQ_BUS_ERR			//0x80
-	))
+	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE	| LWCAN_IRQ_BUS_ERR))
 	{
 		ll_lw_can_rst_from_isr();
 		pCanDriverObj->driverFlags |= LWCAN_DS_TX_COOLDOWN;
@@ -347,10 +347,10 @@ bool ll_lw_can_start()
 	// Time quanta.
 	double quanta;
 
-	// Assign GPIOs.
-	ll_lw_can_assign_gpio_matrix();
 	// Enable peripheral.
 	ll_lw_can_enable_peripheral_in_reset_mode();
+	// Assign GPIOs.
+	ll_lw_can_assign_gpio_matrix();
 	// Reset interrupt and error counters.
 	ll_lw_can_clear_registers();
 
@@ -373,7 +373,8 @@ bool ll_lw_can_start()
 	ll_lw_can_reset_filter_reg();
 
 	// Enable interrupts.
-	MODULE_CAN->IER.U = 0xEF;
+	MODULE_CAN->IER.U = 0xFF;
+	MODULE_CAN->IER.B.BRP_DIV = 0;
 
 	// Allocate queues.
 	pCanDriverObj->rxQueue = xQueueCreate(pCanDriverObj->rxQueueSize, sizeof(lw_can_frame_t));
