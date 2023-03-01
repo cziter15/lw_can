@@ -320,7 +320,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 		return;
 
 	// Handle sending in case there is no error.
-	if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) && MODULE_CAN->SR.B.TBS) 
+	if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) && MODULE_CAN->SR.B.TBS)
 	{
 		lw_can_frame_t frame;
 		if (xQueueIsQueueEmptyFromISR(pCanDriverObj->txQueue) == pdFALSE)
