@@ -149,14 +149,15 @@ void ll_lw_can_assign_gpio_matrix()
 	ll_lw_can_release_gpio_matrix();
 
 	// Configure TX pin
-	gpio_set_level(pCanDriverObj->txPin, 1);
 	gpio_set_direction(pCanDriverObj->txPin,GPIO_MODE_OUTPUT);
-	gpio_matrix_out(pCanDriverObj->txPin,CAN_TX_IDX,0,0);
+	gpio_set_pull_mode(pCanDriverObj->txPin, GPIO_PULLUP_ONLY);
+	gpio_matrix_out(pCanDriverObj->txPin, CAN_TX_IDX, 0, 0);
 	gpio_pad_select_gpio(pCanDriverObj->txPin);
 
 	// Configure RX pin
-	gpio_set_direction(pCanDriverObj->rxPin,GPIO_MODE_INPUT);
-	gpio_matrix_in(pCanDriverObj->rxPin,CAN_RX_IDX,0);
+	gpio_set_direction(pCanDriverObj->rxPin, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(pCanDriverObj->rxPin, GPIO_PULLUP_ONLY);
+	gpio_matrix_in(pCanDriverObj->rxPin, CAN_RX_IDX, 0);
 	gpio_pad_select_gpio(pCanDriverObj->rxPin);
 }
 
