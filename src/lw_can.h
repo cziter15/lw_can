@@ -68,14 +68,12 @@ extern bool lw_can_set_filter(uint32_t id, uint32_t mask = 0xFFFFFFFF);
 */
 extern bool lw_can_uninstall(); 
 
-
 /*
 	This function is used to start the CAN bus driver.
 
 	@return true on success, false on failure.
 */
 extern bool lw_can_start();
-
 
 /*
 	This function is used to query CAN driver status.
