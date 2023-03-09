@@ -529,6 +529,15 @@ bool lw_can_start()
 	return driverStarted;
 }
 
+bool lw_can_is_driver_running()
+{
+	bool isRunning;
+	LWCAN_ENTER_CRITICAL();
+	isRunning = pCanDriverObj ? pCanDriverObj->driverFlags & LWCAN_DS_DRIVER_STARTED : false;
+	LWCAN_EXIT_CRITICAL();
+	return isRunning;
+}
+
 bool lw_can_stop()
 {
 	bool driverStopped;

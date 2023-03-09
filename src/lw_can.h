@@ -76,6 +76,14 @@ extern bool lw_can_uninstall();
 */
 extern bool lw_can_start();
 
+
+/*
+	This function is used to query CAN driver status.
+
+	@return true if running, otherwise false.
+*/
+extern bool lw_can_is_driver_running();
+
 /*
 	This function is used to stop the CAN bus driver.
 
