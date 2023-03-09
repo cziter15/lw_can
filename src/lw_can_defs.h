@@ -36,7 +36,7 @@
 #define LWCAN_SHORT_RESET_DELAY_MS 200
 #define LWCAN_LONG_RESET_DELAY_MS 10000
 
-#define LWCAN_DS_TX_COOLDOWN 				(1 << 0) // 1
+#define LWCAN_DS_RESET_REQUESTED 			(1 << 0) // 1
 #define LWCAN_DS_DRIVER_STARTED 			(1 << 1) // 2
 #define LWCAN_DS_HAS_FRAME_TO_SEND 			(1 << 2) // 4
 
@@ -369,8 +369,6 @@ struct lw_can_bus_counters
 		uint32_t busErrorCnt{0};						// Bus error counter.
 		uint32_t retransmitCount{0};					// TX frame retry counter.
 	#endif
-
-	uint32_t resetsInARow{10};						// Number of resets in a row.
 };
 
 struct lw_can_bus_timing_t

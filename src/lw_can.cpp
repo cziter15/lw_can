@@ -72,6 +72,7 @@ struct lw_can_driver_obj_t
 
 	lw_can_frame_t cachedFrame;								// Cached frame to retry.
 	lw_can_bus_counters counters;							// Statistics counters.
+	uint32_t resetRetryNum;									// Number of resets retries.
 
 	intr_handle_t intrHandle;								// CAN interrupt handle.
 
@@ -242,17 +243,17 @@ void lw_can_wdt_task(void* arg)
 {
 	uint32_t shortDelay = pdMS_TO_TICKS(LWCAN_SHORT_RESET_DELAY_MS);
 	uint32_t resetDelay = shortDelay;
-	uint8_t maxResets = 10;
+	uint8_t maxResetsRetries = 10;
 
 	while (true)
 	{	
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj->driverFlags & LWCAN_DS_TX_COOLDOWN)
+		if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED)
 		{
 			// Exit reset mode.
 			MODULE_CAN->MOD.B.RM = 0;
 
-			// Requeue the frame if we broke sending.
+			// If retransmission is enabled and we had frame to send but ended with reset request, then retry sending cached frame.
 			if ((pCanDriverObj->configFlags & LWCAN_CFG_AUTO_RETRANSMIT) && (pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND))
 			{
 				ll_lw_can_write_frame_phy(pCanDriverObj->cachedFrame, false);
@@ -262,7 +263,7 @@ void lw_can_wdt_task(void* arg)
 			}
 
 			// If this is n-th reset, then enlarge delay for reset to long delay.
-			if (pCanDriverObj->counters.resetsInARow < maxResets && ++pCanDriverObj->counters.resetsInARow == maxResets)
+			if (pCanDriverObj->resetRetryNum < maxResetsRetries && ++pCanDriverObj->resetRetryNum == maxResetsRetries)
 			{
 				xQueueReset(pCanDriverObj->txQueue);
 				xQueueReset(pCanDriverObj->rxQueue);
@@ -270,12 +271,13 @@ void lw_can_wdt_task(void* arg)
 				pCanDriverObj->driverFlags &= ~LWCAN_DS_HAS_FRAME_TO_SEND;
 			}
 			
-			pCanDriverObj->driverFlags &= ~LWCAN_DS_TX_COOLDOWN;
+			// Remove reset request flag.
+			pCanDriverObj->driverFlags &= ~LWCAN_DS_RESET_REQUESTED;
 		}
 		else
 		{
 			// Restore short delay and clear reset counter.
-			pCanDriverObj->counters.resetsInARow = 0;
+			pCanDriverObj->resetRetryNum = 0;
 			resetDelay = shortDelay;
 		}
 		LWCAN_EXIT_CRITICAL();
@@ -312,12 +314,12 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE | LWCAN_IRQ_BUS_ERR))
 	{
 		ll_lw_can_rst_from_isr();
-		pCanDriverObj->driverFlags |= LWCAN_DS_TX_COOLDOWN;
+		pCanDriverObj->driverFlags |= LWCAN_DS_RESET_REQUESTED;
 		return;
 	}
 
 	// Skip handling transmission if we are in TX cooldown state.
-	if (pCanDriverObj->driverFlags & LWCAN_DS_TX_COOLDOWN)
+	if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED)
 		return;
 
 	// Handle sending in case there is no error.
@@ -386,6 +388,7 @@ bool ll_lw_can_start()
 
 	// Reset counters.
 	pCanDriverObj->counters = {};
+	pCanDriverObj->resetRetryNum = 0;
 	
 	// Install CAN interrupt service.
 	esp_intr_alloc(ETS_CAN_INTR_SOURCE, ESP_INTR_FLAG_IRAM, lw_can_interrupt, nullptr, &pCanDriverObj->intrHandle);
@@ -541,7 +544,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 	LWCAN_ENTER_CRITICAL();
 	if (pCanDriverObj && (pCanDriverObj->driverFlags & LWCAN_DS_DRIVER_STARTED))
 	{
-		if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) || (pCanDriverObj->driverFlags & LWCAN_DS_TX_COOLDOWN))
+		if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) || (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED))
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
