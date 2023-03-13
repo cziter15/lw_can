@@ -235,8 +235,6 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	// Reset filter reg.
 	ll_lw_can_reset_filter_reg();
 
-	// Release reset mode.
-	MODULE_CAN->MOD.B.RM = 0;
 }
 
 void lw_can_wdt_task(void* arg)
