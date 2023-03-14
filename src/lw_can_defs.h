@@ -36,7 +36,7 @@
 #define LWCAN_SHORT_RESET_DELAY_MS 200
 #define LWCAN_LONG_RESET_DELAY_MS 10000
 
-#define LWCAN_DS_RESET_REQUESTED 			(1 << 0) // 1
+#define LWCAN_DS_RESET_IN_PROGRESS 			(1 << 0) // 1
 #define LWCAN_DS_DRIVER_STARTED 			(1 << 1) // 2
 #define LWCAN_DS_HAS_FRAME_TO_SEND 			(1 << 2) // 4
 

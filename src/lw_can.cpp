@@ -235,6 +235,8 @@ void IRAM_ATTR ll_lw_can_rst_from_isr()
 	// Reset filter reg.
 	ll_lw_can_reset_filter_reg();
 
+	// Exit reset mode.
+	MODULE_CAN->MOD.B.RM = 0;
 }
 
 void lw_can_wdt_task(void* arg)
@@ -246,11 +248,8 @@ void lw_can_wdt_task(void* arg)
 	while (true)
 	{	
 		LWCAN_ENTER_CRITICAL();
-		if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED)
+		if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_IN_PROGRESS)
 		{
-			// Exit reset mode.
-			MODULE_CAN->MOD.B.RM = 0;
-
 			// If retransmission is enabled and we had frame to send but ended with reset request, then retry sending cached frame.
 			if ((pCanDriverObj->configFlags & LWCAN_CFG_AUTO_RETRANSMIT) && (pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND))
 			{
@@ -270,7 +269,7 @@ void lw_can_wdt_task(void* arg)
 			}
 			
 			// Remove reset request flag.
-			pCanDriverObj->driverFlags &= ~LWCAN_DS_RESET_REQUESTED;
+			pCanDriverObj->driverFlags &= ~LWCAN_DS_RESET_IN_PROGRESS;
 		}
 		else
 		{
@@ -312,12 +311,12 @@ void IRAM_ATTR ll_lw_can_interrupt()
 	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE | LWCAN_IRQ_BUS_ERR))
 	{
 		ll_lw_can_rst_from_isr();
-		pCanDriverObj->driverFlags |= LWCAN_DS_RESET_REQUESTED;
+		pCanDriverObj->driverFlags |= LWCAN_DS_RESET_IN_PROGRESS;
 		return;
 	}
 
 	// Skip handling transmission if we are in TX cooldown state.
-	if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED)
+	if (pCanDriverObj->driverFlags & LWCAN_DS_RESET_IN_PROGRESS)
 		return;
 
 	// Handle sending in case there is no error.
@@ -551,7 +550,7 @@ bool lw_can_transmit(const lw_can_frame_t& frame)
 	LWCAN_ENTER_CRITICAL();
 	if (pCanDriverObj && (pCanDriverObj->driverFlags & LWCAN_DS_DRIVER_STARTED))
 	{
-		if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) || (pCanDriverObj->driverFlags & LWCAN_DS_RESET_REQUESTED))
+		if ((pCanDriverObj->driverFlags & LWCAN_DS_HAS_FRAME_TO_SEND) || (pCanDriverObj->driverFlags & LWCAN_DS_RESET_IN_PROGRESS))
 		{
 			frameQueued = xQueueSend(pCanDriverObj->txQueue, &frame, 0) == pdTRUE;
 		}
