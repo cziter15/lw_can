@@ -303,9 +303,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 
 	// Read frames from buffer.
 	for (unsigned int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; ++rxFrames)
-	{
 		ll_lw_can_read_frame_phy();
-	}
 
 	// Handle error interrupts.
 	if (interrupt & (LWCAN_IRQ_ERR_PASSIVE | LWCAN_IRQ_BUS_ERR))
@@ -328,7 +326,7 @@ void IRAM_ATTR ll_lw_can_interrupt()
 			xQueueReceiveFromISR(pCanDriverObj->txQueue, &frame, nullptr);
 			ll_lw_can_write_frame_phy(frame);
 		}
-		else 
+		else
 		{
 			pCanDriverObj->driverFlags &= ~LWCAN_DS_HAS_FRAME_TO_SEND;
 		}
@@ -343,9 +341,6 @@ bool ll_lw_can_start()
 	
 	if (pCanDriverObj->pmLock)
 		esp_pm_lock_acquire(pCanDriverObj->pmLock);
-
-	// Time quanta.
-	double quanta;
 
 	// Enable peripheral.
 	ll_lw_can_enable_peripheral_in_reset_mode();
@@ -362,7 +357,7 @@ bool ll_lw_can_start()
 	MODULE_CAN->BTR0.B.BRP = (pCanDriverObj->busTiming.prescaler / 2) - 1;
 	MODULE_CAN->BTR1.B.TSEG1 = pCanDriverObj->busTiming.tseg1 - 1;
 	MODULE_CAN->BTR1.B.TSEG2 = pCanDriverObj->busTiming.tseg2 - 1;
-	MODULE_CAN->BTR1.B.SAM = (pCanDriverObj->driverFlags & LWCAN_CFG_TRIPLE_SAMPLING) ? 1 : 0;
+	MODULE_CAN->BTR1.B.SAM = (pCanDriverObj->configFlags & LWCAN_CFG_TRIPLE_SAMPLING) ? 1 : 0;
 
 	// Set OC mode.
 	MODULE_CAN->MOD.B.LOM = (pCanDriverObj->configFlags & LWCAN_CFG_LISTEN_ONLY) ? 1 : 0;
@@ -395,6 +390,7 @@ bool ll_lw_can_start()
 
 	// Set driver state.
 	pCanDriverObj->driverFlags = LWCAN_DS_DRIVER_STARTED;
+
 	return true;
 }
 
@@ -418,6 +414,7 @@ bool ll_lw_can_stop()
 	// Clear state flags.
 	pCanDriverObj->driverFlags = 0;
 
+	// Release pm lock.
 	if (pCanDriverObj->pmLock)
 		esp_pm_lock_release(pCanDriverObj->pmLock);
 
@@ -476,6 +473,10 @@ bool ll_lw_can_uninstall()
 	if (pCanDriverObj->driverFlags & LWCAN_DS_DRIVER_STARTED)
 		ll_lw_can_stop();
 
+	// Delete pm lock.
+	if (pCanDriverObj->pmLock)
+		esp_pm_lock_delete(pCanDriverObj->pmLock);
+	
 	// Release gpio.
 	ll_lw_can_release_gpio_matrix();
 
