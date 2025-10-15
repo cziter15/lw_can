@@ -38,7 +38,7 @@
 
 	@param rxPin CAN RX pin.
 	@param txPin CAN TX pin.
-	@param busTiming CAN BUS timing reference structure.
+	@param busTiming CAN bus timing reference structure.
 	@param rxQueueSize CAN RX queue size.
 	@param txQueueSize CAN TX queue size.
 	@param configFlags CAN config flags.
@@ -48,10 +48,10 @@
 extern bool lw_can_install(gpio_num_t rxPin, gpio_num_t txPin, const lw_can_bus_timing_t& busTiming, uint8_t rxQueueSize = 30, uint8_t txQueueSize = 30, uint8_t configFlags = LWCAN_CFG_AUTO_RETRANSMIT);
 
 /*
-	This function is used to set CAN bus filter for incomming message.
+	This function is used to set CAN bus filter for incoming messages.
 	Must be called after install and before start.
 
-	ISR will check it like this by
+	ISR will check it like this:
 		(recvID & mask) == id
 
 	@param id Frame ID.
@@ -66,7 +66,7 @@ extern bool lw_can_set_filter(uint32_t id, uint32_t mask = 0xFFFFFFFF);
 
 	@return true on success, false on failure.
 */
-extern bool lw_can_uninstall(); 
+extern bool lw_can_uninstall();
 
 /*
 	This function is used to start the CAN bus driver.
@@ -90,7 +90,7 @@ extern bool lw_can_is_driver_running();
 extern bool lw_can_stop();
 
 /*
-	This function transmits CAN frame.
+	This function transmits a CAN frame.
 
 	@param frame Frame reference
 
@@ -99,11 +99,10 @@ extern bool lw_can_stop();
 extern bool lw_can_transmit(const lw_can_frame_t& frame);
 
 /*
-	This function reads CAN frame from queue.
+	This function reads the next CAN frame from the receive queue.
 
-	@param frame Frame reference
-
-	@return true if frame has been read, false otherwise.
+	@param outFrame Frame reference to fill with the received frame.
+	@return true if a frame has been read, false otherwise.
 */
 extern bool lw_can_read_next_frame(lw_can_frame_t& outFrame);
 
@@ -111,10 +110,10 @@ extern bool lw_can_read_next_frame(lw_can_frame_t& outFrame);
 	This function will return all bus counter information.
 
 	@param outCounters Reference to counters structure to fill.
-	@param msgsToTx Reference to fill with number of messages to transmit.
-	@param msgsToRx Reference to fill with number of messages to receive.
+	@param msgsToTx Reference to fill with number of messages queued to transmit.
+	@param msgsToRx Reference to fill with number of messages queued to receive.
 
-	@return True on success, false on fail.
+	@return True on success, false on failure.
 */
 
 #ifdef LWCAN_DEBUG_COUNTERS
