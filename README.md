@@ -1,27 +1,44 @@
-# Lightweight ESP32 CAN Library
-Library to support ESP32 built-in CAN controller.
+# Lightweight `ESP32` CAN Library
 
-## This project is at experimental stage!
+Library to support the ESP32 built-in CAN controller.
+
+> This project is at an experimental stage!
 
 ## Introduction
-When I developed the code for the heating boiler monitoring module (PelletMon) I used several different CAN libraries.
 
-Most of them are linked below, but each of them has disadvantages. 
+When I developed the code for the heating boiler monitoring module (`PelletMon`) I evaluated several existing CAN libraries.
 
-- The most extensive is esp32_can, but it has a few redundant tasks running in the background. Nevertheless, I took a lot of inspiration from it - for example, the idea for an automatic watchdog.
-- As for ESP32-Arduino-CAN, this library is very simple. It inspired me in the context of the code architecture itself.
-- The last linked library is the basis of most implementations available on the web. In short, it contains all the commands we need to give the SJA1000 module.
-- ... of course, I also used the original TWAI driver from ESP-IDF, but here the most disturbing was its instability - for example, a fatal error in twai_initiate_recovery().
+Most of them are linked below, but each has trade-offs that motivated creating a lightweight alternative:
 
-All these issues led me to create my own solution - lw_can - which is lightweight CAN bus library for ESP32.
+- The most extensive is `esp32_can`, but it runs a few redundant background tasks. I took a lot of inspiration from it — for example, the idea for an automatic watchdog.
+- `ESP32-Arduino-CAN` is very simple and influenced the overall code architecture.
+- `ESP32-CAN-Driver` is the basis for many implementations on the web; it contains the commands required for the `SJA1000` module.
+- I also used the original `TWAI` driver from `ESP-IDF`, but found some instability (for example, a fatal error in `twai_initiate_recovery()`).
+
+These issues led me to create `lw_can` — a lightweight CAN bus library for `ESP32`.
 
 ### Features
-- TWAI-like interface known from ESP-IDF (methods like lw_can_install, lw_can_transmit etc)
-- Error counters (arbitration lost, bus error, overrun, passive etc)
-- Watchdog (will reset peripheral in case of error - this is "smart reset" avoiding reset loop - however this is not CAN standard compliant).
-- Various bus speed support (BRP settings available)
+
+- `TWAI`-like interface familiar from `ESP-IDF` (functions such as `lw_can_install`, `lw_can_transmit`, etc.)
+- Error counters (arbitration lost, bus error, overrun, error passive, etc.)
+- Watchdog that resets the CAN peripheral on error — a "smart reset" which avoids reset loops (note: this is not strictly CAN-standard behavior)
+- Support for various bus speeds (configurable `BRP` settings)
 
 ## Based on
-- esp32_can [from Collin Kidder](https://github.com/collin80/esp32_can)
-- ESP32-Arduino-CAN [from Michael Wagner](https://github.com/miwagner/ESP32-Arduino-CAN)
-- ESP32-CAN-Driver [from Thomas Barth](https://github.com/ThomasBarth/ESP32-CAN-Driver)
+
+- `esp32_can` (Collin Kidder) — https://github.com/collin80/esp32_can  
+- `ESP32-Arduino-CAN` (Michael Wagner) — https://github.com/miwagner/ESP32-Arduino-CAN  
+- `ESP32-CAN-Driver` (Thomas Barth) — https://github.com/ThomasBarth/ESP32-CAN-Driver
+
+## Quick notes
+
+- This project aims to be small and stable. If you need the full feature set of `esp32_can` or the Arduino wrapper, those projects may be better fits.
+- If you encounter issues with `TWAI` recovery in `ESP-IDF`, `lw_can` attempts to mitigate those problems via the watchdog logic, but please report any unexpected behavior.
+
+## Contributing
+
+Contributions, bug reports, and improvements are welcome. Please open issues or pull requests describing the change and the reasoning.
+
+## License
+
+See the repository license file for details.
