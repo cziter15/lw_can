@@ -30,7 +30,7 @@ These issues led me to create **`lw_can`** - a lightweight CAN bus library for `
   _(note: this is not strictly CAN-standard behavior)_
 - ⚡ **Support for various bus speeds** (configure via the provided `lw_can_bus_timing_t`)
 
-## 🛠️ Example usage — split into functions
+## 🛠️ Example usage
 
 Below is a compact example that shows a single sketch with two clear functions: `sendCanFrame(...)` for transmitting, and `pollCan()` for receiving/processing incoming frames. These functions use the real public API and structures from `src/lw_can.h` / `src/lw_can_defs.h`.
 
